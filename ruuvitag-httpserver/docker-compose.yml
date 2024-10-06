@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  ruuvitag_httpserver:
+    container_name: ruuvitag-httpserver
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '2323:1323/tcp'
+    restart: unless-stopped
+
+networks:
+  default:
+    external:
+      name: ${DOCKER_NETWORK}

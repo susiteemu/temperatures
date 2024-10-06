@@ -1,0 +1,24 @@
+
+@startuml
+
+collections [Ruuvitag #1] as rt1
+collections [Ruuvitag #2] as rt2
+collections [Ruuvitag #N] as rtn
+[Ruuvitag Reader] as rtr
+[Ruuvitag Minireader] as rtmr
+[Ruuvitag HTTP server] as rthttp
+[Infoscreen Image Generator] as iig
+database "InfluxDB" as db
+
+rt1 ..> Bluetooth : advertises
+rt2 ..> Bluetooth : advertises
+rtn ..> Bluetooth : advertises
+rtr ..> Bluetooth : listens
+rtmr ..> Bluetooth : listens
+rtmr ..> WIFI : posts measurement via WIFI
+WIFI ..> rthttp
+rthttp ..> db : writes to database
+rtr ..> db : writes to database
+iig ..> db : reads measurements
+
+@enduml
