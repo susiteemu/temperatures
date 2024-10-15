@@ -43,7 +43,18 @@ func (m *Measurement) FormatValue() string {
 	if m.Empty {
 		return "--"
 	}
-	return fmt.Sprintf("%.1f°", m.Value)
+	return fmt.Sprintf("%.1f", m.Value)
+}
+
+func (m *Measurement) FormatAge() string {
+	if m.Empty || m.AgeInMins < 1 {
+		return ""
+	}
+	if m.AgeInMins < 30 {
+		return fmt.Sprintf(">%dm", m.AgeInMins)
+	} else {
+		return ">30m"
+	}
 }
 
 func loadConfiguration() {
@@ -62,7 +73,6 @@ func loadConfiguration() {
 }
 
 func main() {
-
 	output := os.Args[1]
 
 	loadConfiguration()

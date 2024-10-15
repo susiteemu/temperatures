@@ -103,6 +103,7 @@ func drawResult(measurements []Measurement, output string) {
 	rowH := imgH / rows
 	colW := imgW / cols
 	for idx, s := range measurements {
+		// calculate center for grid
 		cX := colW / 2
 		cY := rowH*(idx/2) + (rowH / 2) - (ldy / 2) - (dy / 2)
 		if (idx+1)%2 == 0 {
@@ -122,6 +123,43 @@ func drawResult(measurements []Measurement, output string) {
 			Y: fixed.I(cY + dy),
 		}
 		d.DrawString(val)
+
+		if !s.Empty {
+			log.Debug().Msg("Drawing other things")
+			dl.Dot = fixed.Point26_6{
+				X: fixed.I(cX) + d.MeasureString(val)/2,
+				Y: fixed.I(cY + (dy / 2)),
+			}
+			dl.DrawString("°C")
+
+			nY := int(idx/2)*rowH + rowH - 5
+			log.Debug().Msgf("At %d calculated modulus %d and got nY %d", idx, (idx+1)%2, nY)
+
+			nX := colW - 5
+			if (idx+1)%2 == 0 {
+				nX = colW + colW - 5
+			}
+
+			ageW := do.MeasureString(s.FormatAge())
+
+			if ageW.Ceil() > 1 {
+				do.Dot = fixed.Point26_6{
+					X: fixed.I(nX) - ageW,
+					Y: fixed.I(nY),
+				}
+				do.DrawString(s.FormatAge())
+
+				ruler := image.Black
+				for i := nY - 20; i < nY+5; i++ {
+					rgba.Set(nX-ageW.Ceil()-5, i, ruler)
+				}
+				for i := nX - ageW.Ceil() - 5; i < nX+5; i++ {
+					rgba.Set(i, nY-20, ruler)
+				}
+			}
+
+		}
+
 	}
 	ruler := image.Black
 	for i := 0; i < imgH; i++ {
@@ -135,10 +173,11 @@ func drawResult(measurements []Measurement, output string) {
 
 	y := imgH - 10
 	currentTime := time.Now()
-	formattedTime := currentTime.Format("2.1 15:04:05")
-	updatedText := fmt.Sprintf("Päivitetty: %s", formattedTime)
+	formattedTime := currentTime.Format("15:04")
+	updatedText := fmt.Sprintf("%s", formattedTime)
 	do.Dot = fixed.Point26_6{
-		X: fixed.I(imgW) - do.MeasureString(updatedText) - fixed.I(10),
+		//X: fixed.I(imgW) - do.MeasureString(updatedText) - fixed.I(10),
+		X: fixed.I(10),
 		Y: fixed.I(y),
 	}
 	do.DrawString(updatedText)
