@@ -47,7 +47,7 @@ func (m *Measurement) FormatValue() string {
 }
 
 func (m *Measurement) FormatAge() string {
-	if m.Empty || m.AgeInMins < 1 {
+	if m.Empty || m.AgeInMins < 3 {
 		return ""
 	}
 	if m.AgeInMins < 30 {
