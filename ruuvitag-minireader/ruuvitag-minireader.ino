@@ -3,10 +3,27 @@
 */
 
 #include <ArduinoBLE.h>
+#include <WiFi.h>
+#include <ArduinoJson.h>
+#include <HTTPClient.h>
+
+const char* serverName = "http://192.168.1.207/ruuvitag/measurements";
+
+//------------------------------------------
+//WIFI
+const char* ssid = "<ssid>";
+const char* pw = "<password>";
+//------------------------------------------
+
 
 float temperature, humidity;
+uint32_t pressure;
+uint16_t battery;
+String device;
+
 bool new_data = false;
 bool debug = false;
+bool writeToDb = true;
 
 void blePeripheralDiscoveredHandler(BLEDevice central) {
   if(central.hasManufacturerData() && central.hasAdvertisementData()) {
@@ -52,9 +69,15 @@ void blePeripheralDiscoveredHandler(BLEDevice central) {
 
     int16_t raw_temperature = (int16_t)value[payload_start]<<8 | (int16_t)value[payload_start+1];
     int16_t raw_humidity = (int16_t)value[payload_start+2]<<8 | (int16_t)value[payload_start+3];
-  
-    temperature = raw_temperature * 0.005; // Celcius
-    humidity = raw_humidity * 0.0025; // Percent
+    uint16_t raw_pressure = (uint16_t)value[payload_start+4]<<8 | (uint16_t)value[payload_start+5];
+    uint16_t raw_battery = (uint16_t)value[payload_start+9]<<8 | (uint16_t)value[payload_start+10];
+    raw_battery = raw_battery & 0x07FF; // mask to get only first 11-bits
+
+    device = central.address();
+    temperature = raw_temperature * 0.005;
+    humidity = raw_humidity * 0.0025;
+    pressure = raw_pressure + 50000;
+    battery = raw_battery + 1600;
     new_data = true;
   } else {
     Serial.print("Unknown Data Format from RuuviTag received: ");
@@ -62,23 +85,86 @@ void blePeripheralDiscoveredHandler(BLEDevice central) {
   }
 }
 
-void print_data() {
+void send_data() {
   if(!new_data)
     return;
 
   new_data = false;
+  Serial.print("Device: ");
+  Serial.print(device);
+  Serial.print(" ");
   Serial.print("Temperature: ");
   Serial.print(temperature);
   Serial.print("C ");
   Serial.print("Humidity: ");
   Serial.print(humidity);
   Serial.print("% ");
+  Serial.print("Pressure: ");
+  Serial.print(pressure);
+  Serial.print("Pa ");
+  Serial.print("Battery: ");
+  Serial.print(battery);
+  Serial.print("mV ");
   Serial.println();
+
+  if (!writeToDb)
+    return;
+
+  HTTPClient http;
+
+  String serverPath = serverName;
+  
+  // Your Domain name with URL path or IP address with path
+  http.begin(serverPath.c_str());
+  
+  http.addHeader("Content-Type", "application/json");
+
+  DynamicJsonDocument doc(1024);
+  doc["temp"] = temperature;
+  doc["mac"] = device;
+  doc["humidity"] = humidity;
+  doc["pressure"] = pressure;
+  doc["battery"] = battery;
+
+  // Data to send with HTTP POST
+  String httpRequestData = "";
+  serializeJson(doc, httpRequestData);
+
+  // Send HTTP POST request
+  int httpResponseCode = http.POST(httpRequestData);
+  
+  if (httpResponseCode>0) {
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+  }
+  else {
+    Serial.print("Error code: ");
+    Serial.println(httpResponseCode);
+  }
+  // Free resources
+  http.end();
 }
 
 void setup() {
   Serial.begin(9600);
   while (!Serial);
+
+  //Setup WIFI
+  WiFi.begin(ssid, pw);
+  Serial.println("");
+
+  //Wait for WIFI connection
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  esp_sleep_enable_timer_wakeup(120 * 1000000); // deep sleep for 2 minutes
 
   if (!BLE.begin()) {
     Serial.println("starting Bluetooth® Low Energy module failed!");
@@ -88,10 +174,26 @@ void setup() {
   Serial.println("------------------------------------------------------------------");
   BLE.setEventHandler(BLEDiscovered, blePeripheralDiscoveredHandler);
   BLE.scan();
-  //BLE.scanForAddress("f2:40:f1:bc:69:e0", true); // this is my ruuvitag. You can limit the scan for explicitly your ruuvitag
+  delay(1000);
+  Serial.println("Starting to poll...");
+  for (int i = 0; i < 60; i++) {
+    Serial.print("Poll round: ");
+    Serial.println(i);
+    BLE.poll();
+    send_data();
+    delay(1000);
+  }
+  Serial.println("Stopped polling");
+  BLE.stopScan();
+  delay(1000);
+  BLE.end();
+  delay(1000);
+  
+  
+  Serial.println("It is time to sleep");
+  Serial.flush();
+  esp_deep_sleep_start();
 }
 
 void loop() {
-  BLE.poll();
-  print_data();
 }
