@@ -71,6 +71,18 @@ func (m *Measurement) FormatAge() string {
 	}
 }
 
+func (m *Measurement) FormatSlope() string {
+	if m.Empty || m.Slope == 0 {
+		return ""
+	}
+	if m.Slope > 0 {
+		return "↑"
+	} else if m.Slope < 0 {
+		return "↓"
+	}
+	return ""
+}
+
 func loadEnv() {
 	envPath := os.Getenv("CONFIG")
 	log.Debug().Msgf("Reading environment from %s", envPath)

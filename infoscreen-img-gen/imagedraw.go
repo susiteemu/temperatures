@@ -42,119 +42,139 @@ func loadFont(fontfile string) (*truetype.Font, error) {
 
 func drawResult(measurements []Measurement, imageConfiguration *GenerateImageConfiguration) {
 
-	imgW := imageConfiguration.ImgW
-	imgH := imageConfiguration.ImgH
-	labelSize := imageConfiguration.FontM
-	size := imageConfiguration.FontL
-	updatedSize := imageConfiguration.FontS
+	imgWidth := imageConfiguration.ImgW
+	imgHeight := imageConfiguration.ImgH
+	fontSizeL := imageConfiguration.FontL
+	fontSizeM := imageConfiguration.FontM
+	fontSizeS := imageConfiguration.FontS
 
-	f, err := loadFont(fontfile)
+	defaultFont, err := loadFont(fontfile)
 	if err != nil {
 		log.Error().Err(err)
 		return
 	}
 
-	lf, err := loadFont(labelFontfile)
+	labelFont, err := loadFont(labelFontfile)
 	if err != nil {
 		log.Error().Err(err)
 		return
 	}
 
 	fg, bg := image.Black, image.White
-	rgba := image.NewRGBA(image.Rect(0, 0, imgW, imgH))
+	rgba := image.NewRGBA(image.Rect(0, 0, imgWidth, imgHeight))
 	draw.Draw(rgba, rgba.Bounds(), bg, image.Point{0, 0}, draw.Src)
+
+	defaultFontHeight := int(math.Ceil(fontSizeL * spacing * dpi / 72))
+	labelFontHeight := int(math.Ceil(fontSizeM * spacing * dpi / 72))
+	smallFontHeight := int(math.Ceil(fontSizeS * spacing * dpi / 72))
 
 	// Draw the text.
 	h := font.HintingNone
-	dl := &font.Drawer{
+	labelDrawer := &font.Drawer{
 		Dst: rgba,
 		Src: fg,
-		Face: truetype.NewFace(lf, &truetype.Options{
-			Size:    labelSize,
+		Face: truetype.NewFace(labelFont, &truetype.Options{
+			Size:    fontSizeM,
 			DPI:     dpi,
 			Hinting: h,
 		}),
 	}
 
-	d := &font.Drawer{
+	defaultDrawer := &font.Drawer{
 		Dst: rgba,
 		Src: fg,
-		Face: truetype.NewFace(f, &truetype.Options{
-			Size:    size,
+		Face: truetype.NewFace(defaultFont, &truetype.Options{
+			Size:    fontSizeL,
 			DPI:     dpi,
 			Hinting: h,
 		}),
 	}
 
-	do := &font.Drawer{
+	smallDrawer := &font.Drawer{
 		Dst: rgba,
 		Src: fg,
-		Face: truetype.NewFace(f, &truetype.Options{
-			Size:    updatedSize,
+		Face: truetype.NewFace(defaultFont, &truetype.Options{
+			Size:    fontSizeS,
 			DPI:     dpi,
 			Hinting: h,
 		}),
 	}
-
-	dy := int(math.Ceil(size * spacing * dpi / 72))
-	ldy := int(math.Ceil(labelSize * spacing * dpi / 72))
 
 	cols := 2
 	rows := len(measurements) / cols
-	rowH := imgH / rows
-	colW := imgW / cols
-	for idx, s := range measurements {
+	rowHeight := imgHeight / rows
+	colWidth := imgWidth / cols
+	for idx, m := range measurements {
 		// calculate center for grid
-		cX := colW / 2
-		cY := rowH*(idx/2) + (rowH / 2) - (ldy / 2) - (dy / 2)
+		cX := colWidth / 2
+		cY := rowHeight*(idx/2) + (rowHeight / 2) - (labelFontHeight / 2) - (defaultFontHeight / 2)
 		if (idx+1)%2 == 0 {
-			cX = colW + colW/2
+			cX = colWidth + colWidth/2
 		}
 
-		label := s.FormatLabel()
-		dl.Dot = fixed.Point26_6{
-			X: fixed.I(cX) - dl.MeasureString(label)/2,
+		label := m.FormatLabel()
+		labelDrawer.Dot = fixed.Point26_6{
+			X: fixed.I(cX) - labelDrawer.MeasureString(label)/2,
 			Y: fixed.I(cY),
 		}
-		dl.DrawString(label)
+		labelDrawer.DrawString(label)
 
-		val := s.FormatValue()
-		d.Dot = fixed.Point26_6{
-			X: fixed.I(cX) - d.MeasureString(val)/2,
-			Y: fixed.I(cY + dy),
+		val := m.FormatValue()
+		defaultDrawer.Dot = fixed.Point26_6{
+			X: fixed.I(cX) - defaultDrawer.MeasureString(val)/2,
+			Y: fixed.I(cY + defaultFontHeight),
 		}
-		d.DrawString(val)
+		defaultDrawer.DrawString(val)
 
-		if !s.Empty {
+		if !m.Empty {
 			log.Debug().Msg("Drawing other things")
-			dl.Dot = fixed.Point26_6{
-				X: fixed.I(cX) + d.MeasureString(val)/2,
-				Y: fixed.I(cY + (dy / 2)),
+			labelDrawer.Dot = fixed.Point26_6{
+				X: fixed.I(cX) + defaultDrawer.MeasureString(val)/2,
+				Y: fixed.I(cY + (defaultFontHeight / 2)),
 			}
-			dl.DrawString("°C")
+			labelDrawer.DrawString("°C")
+			labelDrawer.DrawString(m.FormatSlope())
 
-			nY := int(idx/2)*rowH + rowH - 5
+			nY := int(idx/2)*rowHeight + rowHeight - 5
 			log.Debug().Msgf("At %d calculated modulus %d and got nY %d", idx, (idx+1)%2, nY)
 
-			nX := colW - 5
+			nX := colWidth - 5
 			if (idx+1)%2 == 0 {
-				nX = colW + colW - 5
+				nX = colWidth + colWidth - 5
 			}
 
-			ageW := do.MeasureString(s.FormatAge())
-
-			if ageW.Ceil() > 1 {
-				do.Dot = fixed.Point26_6{
-					X: fixed.I(nX) - ageW,
+			ageWidth := smallDrawer.MeasureString(m.FormatAge())
+			if ageWidth.Ceil() > 1 {
+				smallDrawer.Dot = fixed.Point26_6{
+					X: fixed.I(nX) - ageWidth,
 					Y: fixed.I(nY),
 				}
-				do.DrawString(s.FormatAge())
+				smallDrawer.DrawString(m.FormatAge())
 
 				ruler := image.Black
 				for i := nY - 20; i < nY+5; i++ {
-					rgba.Set(nX-ageW.Ceil()-5, i, ruler)
+					rgba.Set(nX-ageWidth.Ceil()-5, i, ruler)
 				}
-				for i := nX - ageW.Ceil() - 5; i < nX+5; i++ {
+				for i := nX - ageWidth.Ceil() - 5; i < nX+5; i++ {
+					rgba.Set(i, nY-20, ruler)
+				}
+
+				nX = nX - ageWidth.Ceil() - 10
+			}
+
+			slopeWidth := smallDrawer.MeasureString(m.FormatSlope())
+			if slopeWidth.Ceil() > 1 {
+				smallDrawer.Dot = fixed.Point26_6{
+					X: fixed.I(nX) - slopeWidth,
+					Y: fixed.I(nY),
+				}
+				smallDrawer.DrawString(m.FormatSlope())
+
+				ruler := image.Black
+				for i := nY - 20; i < nY+5; i++ {
+					rgba.Set(nX-slopeWidth.Ceil()-5, i, ruler)
+				}
+				for i := nX - slopeWidth.Ceil() - 5; i < nX+5; i++ {
 					rgba.Set(i, nY-20, ruler)
 				}
 			}
@@ -163,25 +183,33 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 
 	}
 	ruler := image.Black
-	for i := 0; i < imgH; i++ {
-		rgba.Set(imgW/2, i, ruler)
+	for i := 0; i < imgHeight; i++ {
+		rgba.Set(imgWidth/2, i, ruler)
 	}
 	for y := 0; y < rows; y++ {
-		for x := 0; x < imgW; x++ {
-			rgba.Set(x, y*rowH, ruler)
+		for x := 0; x < imgWidth; x++ {
+			rgba.Set(x, y*rowHeight, ruler)
 		}
 	}
 
-	y := imgH - 10
+	uX := 5
+	uM := 5
 	currentTime := time.Now()
 	formattedTime := currentTime.Format("15:04")
 	updatedText := fmt.Sprintf("%s", formattedTime)
-	do.Dot = fixed.Point26_6{
+	smallDrawer.Dot = fixed.Point26_6{
 		//X: fixed.I(imgW) - do.MeasureString(updatedText) - fixed.I(10),
-		X: fixed.I(10),
-		Y: fixed.I(y),
+		X: fixed.I(uX),
+		Y: fixed.I(smallFontHeight),
 	}
-	do.DrawString(updatedText)
+	smallDrawer.DrawString(updatedText)
+	updatedWidth := smallDrawer.MeasureString(updatedText)
+	for i := 0; i < smallFontHeight+uM; i++ {
+		rgba.Set(uX+updatedWidth.Ceil()+uM, i, ruler)
+	}
+	for i := 0; i < uX+updatedWidth.Ceil()+uM; i++ {
+		rgba.Set(i, smallFontHeight+uM, ruler)
+	}
 
 	outFile, err := os.Create(imageConfiguration.Output)
 	if err != nil {
@@ -201,7 +229,7 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgW, imgH), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
+	cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
 	_, err = cmd.Output()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to run 'convert' command")
