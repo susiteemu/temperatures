@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"os"
 	"path"
@@ -9,13 +10,26 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/rs/zerolog/log"
+	"gopkg.in/yaml.v2"
 )
+
+//go:embed configuration/*.yaml
+var configuration embed.FS
 
 const title = "Lämpötilat"
 
 var (
 	envFile = map[string]string{}
 )
+
+type GenerateImageConfiguration struct {
+	Output string  `yaml:"output"`
+	ImgW   int     `yaml:"image_width"`
+	ImgH   int     `yaml:"image_height"`
+	FontL  float64 `yaml:"font_large"`
+	FontM  float64 `yaml:"font_medium"`
+	FontS  float64 `yaml:"font_small"`
+}
 
 type RawMeasurement struct {
 	Label string
@@ -57,13 +71,11 @@ func (m *Measurement) FormatAge() string {
 	}
 }
 
-func loadConfiguration() {
-	ex, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-	exPath := filepath.Dir(ex)
-	envFile, err = godotenv.Read(path.Join(exPath, ".env"))
+func loadEnv() {
+	envPath := os.Getenv("CONFIG")
+	log.Debug().Msgf("Reading environment from %s", envPath)
+	var err error
+	envFile, err = godotenv.Read(path.Join(envPath, ".env"))
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to read from env file")
 		panic(err)
@@ -72,10 +84,49 @@ func loadConfiguration() {
 	log.Debug().Msgf("Read environment %v", envFile)
 }
 
-func main() {
-	output := os.Args[1]
+func loadGenerateImageConfigurations(files [][]byte, output string) ([]*GenerateImageConfiguration, error) {
+	configSlice := []*GenerateImageConfiguration{}
+	for _, file := range files {
+		config := &GenerateImageConfiguration{}
+		err := yaml.Unmarshal(file, config)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to unmarshal file")
+			return nil, err
+		}
+		config.Output = filepath.Join(output, config.Output)
+		configSlice = append(configSlice, config)
+	}
+	return configSlice, nil
 
-	loadConfiguration()
+}
+
+func main() {
+	output := os.Getenv("OUTPUT")
+
+	loadEnv()
+
+	c1, err := configuration.ReadFile("configuration/800x600.yaml")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read 800x600.yaml")
+		panic(1)
+	}
+	c2, err := configuration.ReadFile("configuration/1024x758.yaml")
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read 1024x758.yaml")
+		panic(1)
+	}
+	imgConfigFiles := [][]byte{
+		c1,
+		c2,
+	}
+	imageConfigurations, err := loadGenerateImageConfigurations(imgConfigFiles, output)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to read image configurations")
+		return
+	}
 	measurements := readData()
-	drawResult(measurements, output)
+
+	for _, imageConfig := range imageConfigurations {
+		drawResult(measurements, imageConfig)
+	}
 }

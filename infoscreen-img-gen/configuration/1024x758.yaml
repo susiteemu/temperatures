@@ -1,0 +1,6 @@
+output: 1024x758.png
+image_width: 1024
+image_height: 758
+font_large: 110
+font_medium: 32
+font_small: 24

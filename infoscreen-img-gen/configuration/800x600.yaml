@@ -1,0 +1,6 @@
+output: 800x600.png
+image_width: 800
+image_height: 600
+font_large: 90
+font_medium: 24
+font_small: 16

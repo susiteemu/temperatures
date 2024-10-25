@@ -21,16 +21,10 @@ import (
 //go:embed resources/*.ttf
 var resources embed.FS
 
-const imgW = 800
-const imgH = 600
-
 var (
 	dpi           = float64(72)
 	labelFontfile = "resources/BitterPro-Medium.ttf"
 	fontfile      = "resources/BitterPro-Bold.ttf"
-	labelSize     = float64(24)
-	size          = float64(90)
-	updatedSize   = float64(16)
 	spacing       = 1.1
 )
 
@@ -46,7 +40,14 @@ func loadFont(fontfile string) (*truetype.Font, error) {
 	return f, nil
 }
 
-func drawResult(measurements []Measurement, output string) {
+func drawResult(measurements []Measurement, imageConfiguration *GenerateImageConfiguration) {
+
+	imgW := imageConfiguration.ImgW
+	imgH := imageConfiguration.ImgH
+	labelSize := imageConfiguration.FontM
+	size := imageConfiguration.FontL
+	updatedSize := imageConfiguration.FontS
+
 	f, err := loadFont(fontfile)
 	if err != nil {
 		log.Error().Err(err)
@@ -182,9 +183,9 @@ func drawResult(measurements []Measurement, output string) {
 	}
 	do.DrawString(updatedText)
 
-	outFile, err := os.Create(output)
+	outFile, err := os.Create(imageConfiguration.Output)
 	if err != nil {
-		log.Error().Err(err)
+		log.Error().Err(err).Msgf("Failed to write to file %s", imageConfiguration.Output)
 		os.Exit(1)
 	}
 	defer outFile.Close()
@@ -200,7 +201,7 @@ func drawResult(measurements []Measurement, output string) {
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("convert", output, "-gravity", "center", "-extent", "800x600", "-colorspace", "gray", "-depth", "8", "-rotate", "-90", output)
+	cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgW, imgH), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
 	_, err = cmd.Output()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to run 'convert' command")
