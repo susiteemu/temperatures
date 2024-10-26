@@ -100,6 +100,15 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 		}),
 	}
 
+	whiteSmallDrawer := &font.Drawer{
+		Dst: rgba,
+		Src: bg,
+		Face: truetype.NewFace(defaultFont, &truetype.Options{
+			Size:    fontSizeS,
+			DPI:     dpi,
+			Hinting: h,
+		}),
+	}
 	cols := 2
 	rows := len(measurements) / cols
 	rowHeight := imgHeight / rows
@@ -133,50 +142,40 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 				Y: fixed.I(cY + (defaultFontHeight / 2)),
 			}
 			labelDrawer.DrawString("°C")
-			labelDrawer.DrawString(m.FormatSlope())
 
-			nY := int(idx/2)*rowHeight + rowHeight - 5
+			margin := 8
+			nY := int(idx/2)*rowHeight + rowHeight - margin
 			log.Debug().Msgf("At %d calculated modulus %d and got nY %d", idx, (idx+1)%2, nY)
 
-			nX := colWidth - 5
+			nX := colWidth - margin
 			if (idx+1)%2 == 0 {
-				nX = colWidth + colWidth - 5
+				nX = colWidth + colWidth - margin
 			}
 
 			ageWidth := smallDrawer.MeasureString(m.FormatAge())
 			if ageWidth.Ceil() > 1 {
-				smallDrawer.Dot = fixed.Point26_6{
+				rect := image.Rect(nX-ageWidth.Ceil()-margin, nY-smallFontHeight, nX+margin, nY+margin)
+				draw.Draw(rgba, rect, fg, image.Point{0, 0}, draw.Src)
+
+				whiteSmallDrawer.Dot = fixed.Point26_6{
 					X: fixed.I(nX) - ageWidth,
 					Y: fixed.I(nY),
 				}
-				smallDrawer.DrawString(m.FormatAge())
+				whiteSmallDrawer.DrawString(m.FormatAge())
 
-				ruler := image.Black
-				for i := nY - 20; i < nY+5; i++ {
-					rgba.Set(nX-ageWidth.Ceil()-5, i, ruler)
-				}
-				for i := nX - ageWidth.Ceil() - 5; i < nX+5; i++ {
-					rgba.Set(i, nY-20, ruler)
-				}
-
-				nX = nX - ageWidth.Ceil() - 10
+				nX = nX - ageWidth.Ceil() - margin - (margin + 1)
 			}
 
 			slopeWidth := smallDrawer.MeasureString(m.FormatSlope())
 			if slopeWidth.Ceil() > 1 {
-				smallDrawer.Dot = fixed.Point26_6{
+				rect := image.Rect(nX-slopeWidth.Ceil()-margin, nY-smallFontHeight, nX+margin, nY+margin)
+				draw.Draw(rgba, rect, fg, image.Point{0, 0}, draw.Src)
+
+				whiteSmallDrawer.Dot = fixed.Point26_6{
 					X: fixed.I(nX) - slopeWidth,
 					Y: fixed.I(nY),
 				}
-				smallDrawer.DrawString(m.FormatSlope())
-
-				ruler := image.Black
-				for i := nY - 20; i < nY+5; i++ {
-					rgba.Set(nX-slopeWidth.Ceil()-5, i, ruler)
-				}
-				for i := nX - slopeWidth.Ceil() - 5; i < nX+5; i++ {
-					rgba.Set(i, nY-20, ruler)
-				}
+				whiteSmallDrawer.DrawString(m.FormatSlope())
 			}
 
 		}
