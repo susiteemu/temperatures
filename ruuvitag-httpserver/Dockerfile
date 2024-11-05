@@ -1,6 +1,6 @@
 FROM amd64/alpine:latest
 
-WORKDIR /app
+WORKDIR /server
 
 COPY ["ruuvitag-httpserver", ".env", "config.yml", "./"]
 
