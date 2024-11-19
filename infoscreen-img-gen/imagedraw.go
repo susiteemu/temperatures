@@ -202,7 +202,7 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 
 		}
 
-		if currentSide != RIGHT_SIDE && currentY >= imgHeight {
+		if currentSide != RIGHT_SIDE && currentY+10 >= imgHeight {
 			currentSide = RIGHT_SIDE
 			currentY = 0
 		}
