@@ -45,7 +45,7 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 	imgWidth := imageConfiguration.ImgW
 	imgHeight := imageConfiguration.ImgH
 	fontSizeL := imageConfiguration.FontL
-	fontSizeLMinus := imageConfiguration.FontL - 18
+	fontSizeLMinus := imageConfiguration.FontL - 30
 	fontSizeM := imageConfiguration.FontM
 	fontSizeS := imageConfiguration.FontS
 
@@ -274,6 +274,7 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to run 'convert' command")
 	}
+
 	log.Info().Msg("Successfully wrote image")
 }
 
