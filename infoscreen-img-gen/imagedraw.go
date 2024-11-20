@@ -286,7 +286,7 @@ func drawCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, wsd *fon
 
 	label := m.FormatLabel()
 	ld.Dot = fixed.Point26_6{
-		X: fixed.I(x + 8),
+		X: fixed.I(cX) - ld.MeasureString(label)/2,
 		Y: fixed.I(y + lfh),
 	}
 	ld.DrawString(label)
