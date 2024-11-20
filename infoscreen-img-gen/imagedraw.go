@@ -286,8 +286,8 @@ func drawCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, wsd *fon
 
 	label := m.FormatLabel()
 	ld.Dot = fixed.Point26_6{
-		X: fixed.I(cX) - ld.MeasureString(label)/2,
-		Y: fixed.I(cY),
+		X: fixed.I(x + 8),
+		Y: fixed.I(y + lfh),
 	}
 	ld.DrawString(label)
 
@@ -343,19 +343,12 @@ func drawDoubleCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, ws
 
 	// calculate center for grid
 	cX := x + (w / 2)
-	cY := y + (h / 4) - (lfh / 2) - (dfh / 2)
-
-	label := m.FormatLabel()
-	ld.Dot = fixed.Point26_6{
-		X: fixed.I(cX) - ld.MeasureString(label)/2,
-		Y: fixed.I(cY),
-	}
-	ld.DrawString(label)
+	cY := y + (h / 4)
 
 	val := m.FormatValue()
 	dd.Dot = fixed.Point26_6{
 		X: fixed.I(cX) - dd.MeasureString(val)/2,
-		Y: fixed.I(cY + dfh),
+		Y: fixed.I(cY),
 	}
 	dd.DrawString(val)
 
@@ -363,7 +356,7 @@ func drawDoubleCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, ws
 		log.Debug().Msg("Drawing other things")
 		ld.Dot = fixed.Point26_6{
 			X: fixed.I(cX) + dd.MeasureString(val)/2,
-			Y: fixed.I(cY + (dfh / 2)),
+			Y: fixed.I(cY - (dfh / 2)),
 		}
 		ld.DrawString("°C")
 
