@@ -74,7 +74,7 @@ func getWeather() (*Weather, error) {
 			// skip the first as it concerns current hour (we use current weather data for this)
 			continue
 		}
-		if idx > 6 {
+		if idx > 4 {
 			// take only few first ones
 			break
 		}

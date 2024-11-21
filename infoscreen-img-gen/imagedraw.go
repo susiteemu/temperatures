@@ -9,9 +9,9 @@ import (
 	"image/png"
 	"math"
 	"os"
-	"os/exec"
 	"time"
 
+	"github.com/disintegration/imaging"
 	"github.com/golang/freetype/truetype"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/image/font"
@@ -51,6 +51,7 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 	fontSizeL := imageConfiguration.FontL
 	fontSizeLMinus := imageConfiguration.FontL - 30
 	fontSizeM := imageConfiguration.FontM
+	fontSizeMPlus := imageConfiguration.FontM + 10
 	fontSizeS := imageConfiguration.FontS
 
 	defaultFont, err := loadFont(fontfile)
@@ -72,6 +73,7 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 	defaultFontHeight := int(math.Ceil(fontSizeL * spacing * dpi / 72))
 	defaultHalfCellFontHeight := int(math.Ceil(fontSizeLMinus * spacing * dpi / 72))
 	labelFontHeight := int(math.Ceil(fontSizeM * spacing * dpi / 72))
+	weatherFontHeight := int(math.Ceil(fontSizeMPlus * spacing * dpi / 72))
 	smallFontHeight := int(math.Ceil(fontSizeS * spacing * dpi / 72))
 
 	// Draw the text.
@@ -81,6 +83,16 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 		Src: fg,
 		Face: truetype.NewFace(labelFont, &truetype.Options{
 			Size:    fontSizeM,
+			DPI:     dpi,
+			Hinting: h,
+		}),
+	}
+
+	weatherDrawer := &font.Drawer{
+		Dst: rgba,
+		Src: fg,
+		Face: truetype.NewFace(defaultFont, &truetype.Options{
+			Size:    fontSizeMPlus,
 			DPI:     dpi,
 			Hinting: h,
 		}),
@@ -176,7 +188,7 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 				cellX = colWidth
 			}
 
-			drawDoubleCell(m, weather, cellX, cellY, cellW, cellH, labelFontHeight, defaultFontHeight, smallFontHeight, labelDrawer, defaultDrawer, smallDrawer, whiteSmallDrawer, rgba, fg, imgWidth)
+			drawDoubleCell(m, weather, cellX, cellY, cellW, cellH, labelFontHeight, defaultFontHeight, smallFontHeight, weatherFontHeight, labelDrawer, defaultDrawer, smallDrawer, whiteSmallDrawer, weatherDrawer, rgba, fg, imgWidth)
 
 			currentY += cellH
 		case HALF_CELL:
@@ -273,11 +285,11 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
+	/*cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
 	_, err = cmd.Output()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to run 'convert' command")
-	}
+	}*/
 
 	log.Info().Msg("Successfully wrote image")
 }
@@ -343,20 +355,22 @@ func drawCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, wsd *fon
 	}
 }
 
-func drawDoubleCell(m Measurement, weather *Weather, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, wsd *font.Drawer, rgba *image.RGBA, fg *image.Uniform, imgW int) {
+func drawDoubleCell(m Measurement, weather *Weather, x, y, w, h, lfh, dfh, sfh, wfh int, ld, dd, sd, wsd, wd *font.Drawer, rgba *image.RGBA, fg *image.Uniform, imgW int) {
 
 	// calculate center for grid
 	cX := x + (w / 2)
 	cY := y + (h / 4)
+
+	log.Debug().Msgf("X=%d, Y=%d", x, y)
 
 	val := m.FormatValue()
 	tempStrW := dd.MeasureString(val)
 
 	if weather != nil {
 
-		size := "2x"
+		size := "4x"
 		if imgW > 800 {
-			size = "2x"
+			size = "4x"
 		}
 
 		cacheKey := fmt.Sprintf("%s-%s", weather.Icon, size)
@@ -370,10 +384,16 @@ func drawDoubleCell(m Measurement, weather *Weather, x, y, w, h, lfh, dfh, sfh i
 		}
 
 		if icon != nil {
+
+			if imgW <= 800 {
+				iconW := float64(icon.Bounds().Dx()) * 0.75
+				resizedIcon := imaging.Resize(icon, int(iconW), 0, imaging.Lanczos)
+				icon = resizedIcon
+			}
+
 			bounds := icon.Bounds()
-			iconSize := bounds.Size()
-			wX := cX - iconSize.X - (tempStrW.Ceil() / 2)
-			pos := image.Point{wX, cY - dfh/4*3}
+			iY := cY + bounds.Dy()/4
+			pos := image.Point{x + 10, iY}
 			draw.Draw(rgba, bounds.Add(pos), icon, image.Point{0, 0}, draw.Over)
 		}
 
@@ -427,18 +447,17 @@ func drawDoubleCell(m Measurement, weather *Weather, x, y, w, h, lfh, dfh, sfh i
 
 	if weather != nil {
 
-		sectionW := w/5 - 10
-		cY += dfh/2 + 10
+		cY += dfh/2 + 20
 		for _, h := range weather.Hourly {
-			wX := x + 20
+			wX := x + (w / 2)
 			dt := h.Dt
 			hour := dt.Format("15")
-			ld.Dot = fixed.Point26_6{
+			wd.Dot = fixed.Point26_6{
 				X: fixed.I(wX),
 				Y: fixed.I(cY),
 			}
 			val := hour
-			ld.DrawString(val)
+			wd.DrawString(val)
 
 			size := "1x"
 			cacheKey := fmt.Sprintf("%s-%s", h.Icon, size)
@@ -446,41 +465,35 @@ func drawDoubleCell(m Measurement, weather *Weather, x, y, w, h, lfh, dfh, sfh i
 			if !cached {
 				var err error
 				icon, err = readImg(h.Icon, size)
+				iconW := float64(icon.Bounds().Dx()) * 1.25
+				resizedIcon := imaging.Resize(icon, int(iconW), 0, imaging.Lanczos)
+				icon = resizedIcon
 				if err == nil {
 					iconCache[cacheKey] = icon
 				}
 			}
 
-			wX += sectionW
+			if imgW > 800 {
+				wX += 50
+			} else {
+				wX += 40
+			}
 			if icon != nil {
 				bounds := icon.Bounds()
-				pos := image.Point{wX, cY - 33}
+				pos := image.Point{wX, cY - 43}
 				draw.Draw(rgba, bounds.Add(pos), icon, image.Point{0, 0}, draw.Over)
 			}
 
+			sectionW := 70
 			wX += sectionW
-			ld.Dot = fixed.Point26_6{
+			wd.Dot = fixed.Point26_6{
 				X: fixed.I(wX),
 				Y: fixed.I(cY),
 			}
 			val = fmt.Sprintf("%.1f°", h.Temp)
-			ld.DrawString(val)
+			wd.DrawString(val)
 
-			wX += sectionW
-			ld.Dot = fixed.Point26_6{
-				X: fixed.I(wX),
-				Y: fixed.I(cY),
-			}
-			val = fmt.Sprintf("%d%%", h.Pop)
-			ld.DrawString(val)
-
-			wX += sectionW
-			ld.Dot = fixed.Point26_6{
-				X: fixed.I(wX),
-				Y: fixed.I(cY),
-			}
-			ld.DrawString(fmt.Sprintf("%.1f mm", h.Precipitation))
-			cY += lfh + 15
+			cY += wfh + 15
 		}
 	}
 }
