@@ -18,7 +18,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-//go:embed resources/*
+//go:embed resources/*.ttf resources/icons/*.png
 var resources embed.FS
 
 var (
