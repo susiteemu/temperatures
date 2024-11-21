@@ -18,8 +18,11 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-//go:embed resources/*.ttf resources/icons/*.png
+//go:embed resources/*.ttf
 var resources embed.FS
+
+//go:embed icons/*.png
+var icons embed.FS
 
 var (
 	dpi           = float64(72)
@@ -486,9 +489,9 @@ func readImg(name string, size string) (image.Image, error) {
 	// Open the image to overlay (foreground image)
 	path := ""
 	if size != "1x" {
-		path = fmt.Sprintf("resources/icons/%s@%s.png", name, size)
+		path = fmt.Sprintf("icons/%s@%s.png", name, size)
 	} else {
-		path = fmt.Sprintf("resources/icons/%s.png", name)
+		path = fmt.Sprintf("icons/%s.png", name)
 	}
 	imgFile, err := os.Open(path)
 	if err != nil {
