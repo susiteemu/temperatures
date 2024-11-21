@@ -493,7 +493,7 @@ func readImg(name string, size string) (image.Image, error) {
 	} else {
 		path = fmt.Sprintf("icons/%s.png", name)
 	}
-	imgFile, err := os.Open(path)
+	imgFile, err := icons.Open(path)
 	if err != nil {
 		log.Error().Err(err).Msgf("Error opening image from path %s", path)
 		return nil, err
