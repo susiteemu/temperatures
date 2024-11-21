@@ -83,6 +83,21 @@ func (m *Measurement) FormatSlope() string {
 	return ""
 }
 
+type Weather struct {
+	Icon          string
+	Precipitation float64
+	Hourly        []Forecast
+}
+
+type Forecast struct {
+	Icon          string
+	Dt            time.Time
+	Temp          float64
+	FeelsLike     float64
+	Precipitation float64
+	Pop           int
+}
+
 func loadEnv() {
 	envPath := os.Getenv("CONFIG")
 	log.Debug().Msgf("Reading environment from %s", envPath)
@@ -138,7 +153,13 @@ func main() {
 	}
 	measurements := readData()
 
+	weather, err := getWeather()
+	if err != nil {
+		// log but don't panic
+		log.Error().Err(err).Msg("Failed to read weather")
+	}
+
 	for _, imageConfig := range imageConfigurations {
-		drawResult(measurements, imageConfig)
+		drawResult(measurements, weather, imageConfig)
 	}
 }

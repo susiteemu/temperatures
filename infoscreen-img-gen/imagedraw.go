@@ -9,7 +9,6 @@ import (
 	"image/png"
 	"math"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/golang/freetype/truetype"
@@ -18,7 +17,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-//go:embed resources/*.ttf
+//go:embed resources/*
 var resources embed.FS
 
 var (
@@ -26,6 +25,7 @@ var (
 	labelFontfile = "resources/BitterPro-Medium.ttf"
 	fontfile      = "resources/BitterPro-Bold.ttf"
 	spacing       = 1.1
+	iconCache     = map[string]image.Image{}
 )
 
 func loadFont(fontfile string) (*truetype.Font, error) {
@@ -40,7 +40,7 @@ func loadFont(fontfile string) (*truetype.Font, error) {
 	return f, nil
 }
 
-func drawResult(measurements []Measurement, imageConfiguration *GenerateImageConfiguration) {
+func drawResult(measurements []Measurement, weather *Weather, imageConfiguration *GenerateImageConfiguration) {
 
 	imgWidth := imageConfiguration.ImgW
 	imgHeight := imageConfiguration.ImgH
@@ -172,7 +172,7 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 				cellX = colWidth
 			}
 
-			drawDoubleCell(m, cellX, cellY, cellW, cellH, labelFontHeight, defaultFontHeight, smallFontHeight, labelDrawer, defaultDrawer, smallDrawer, whiteSmallDrawer, rgba, fg)
+			drawDoubleCell(m, weather, cellX, cellY, cellW, cellH, labelFontHeight, defaultFontHeight, smallFontHeight, labelDrawer, defaultDrawer, smallDrawer, whiteSmallDrawer, rgba, fg, imgWidth)
 
 			currentY += cellH
 		case HALF_CELL:
@@ -269,12 +269,12 @@ func drawResult(measurements []Measurement, imageConfiguration *GenerateImageCon
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
-	_, err = cmd.Output()
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to run 'convert' command")
-	}
-
+	/*	cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
+		_, err = cmd.Output()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to run 'convert' command")
+		}
+	*/
 	log.Info().Msg("Successfully wrote image")
 }
 
@@ -339,15 +339,44 @@ func drawCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, wsd *fon
 	}
 }
 
-func drawDoubleCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, wsd *font.Drawer, rgba *image.RGBA, fg *image.Uniform) {
+func drawDoubleCell(m Measurement, weather *Weather, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, wsd *font.Drawer, rgba *image.RGBA, fg *image.Uniform, imgW int) {
 
 	// calculate center for grid
 	cX := x + (w / 2)
 	cY := y + (h / 4)
 
 	val := m.FormatValue()
+	tempStrW := dd.MeasureString(val)
+
+	if weather != nil {
+
+		size := "2x"
+		if imgW > 800 {
+			size = "2x"
+		}
+
+		cacheKey := fmt.Sprintf("%s-%s", weather.Icon, size)
+		icon, cached := iconCache[cacheKey]
+		if !cached {
+			var err error
+			icon, err = readImg(weather.Icon, size)
+			if err == nil {
+				iconCache[cacheKey] = icon
+			}
+		}
+
+		if icon != nil {
+			bounds := icon.Bounds()
+			iconSize := bounds.Size()
+			wX := cX - iconSize.X - (tempStrW.Ceil() / 2)
+			pos := image.Point{wX, cY - dfh/4*3}
+			draw.Draw(rgba, bounds.Add(pos), icon, image.Point{0, 0}, draw.Over)
+		}
+
+	}
+
 	dd.Dot = fixed.Point26_6{
-		X: fixed.I(cX) - dd.MeasureString(val)/2,
+		X: fixed.I(cX) - tempStrW/2,
 		Y: fixed.I(cY),
 	}
 	dd.DrawString(val)
@@ -355,7 +384,7 @@ func drawDoubleCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, ws
 	if !m.Empty {
 		log.Debug().Msg("Drawing other things")
 		ld.Dot = fixed.Point26_6{
-			X: fixed.I(cX) + dd.MeasureString(val)/2,
+			X: fixed.I(cX) + tempStrW/2,
 			Y: fixed.I(cY - (dfh / 2)),
 		}
 		ld.DrawString("°C")
@@ -391,4 +420,87 @@ func drawDoubleCell(m Measurement, x, y, w, h, lfh, dfh, sfh int, ld, dd, sd, ws
 		}
 
 	}
+
+	if weather != nil {
+
+		sectionW := w/5 - 10
+		cY += dfh/2 + 10
+		for _, h := range weather.Hourly {
+			wX := x + 20
+			dt := h.Dt
+			hour := dt.Format("15")
+			ld.Dot = fixed.Point26_6{
+				X: fixed.I(wX),
+				Y: fixed.I(cY),
+			}
+			val := hour
+			ld.DrawString(val)
+
+			size := "1x"
+			cacheKey := fmt.Sprintf("%s-%s", h.Icon, size)
+			icon, cached := iconCache[cacheKey]
+			if !cached {
+				var err error
+				icon, err = readImg(h.Icon, size)
+				if err == nil {
+					iconCache[cacheKey] = icon
+				}
+			}
+
+			wX += sectionW
+			if icon != nil {
+				bounds := icon.Bounds()
+				pos := image.Point{wX, cY - 33}
+				draw.Draw(rgba, bounds.Add(pos), icon, image.Point{0, 0}, draw.Over)
+			}
+
+			wX += sectionW
+			ld.Dot = fixed.Point26_6{
+				X: fixed.I(wX),
+				Y: fixed.I(cY),
+			}
+			val = fmt.Sprintf("%.1f°", h.Temp)
+			ld.DrawString(val)
+
+			wX += sectionW
+			ld.Dot = fixed.Point26_6{
+				X: fixed.I(wX),
+				Y: fixed.I(cY),
+			}
+			val = fmt.Sprintf("%d%%", h.Pop)
+			ld.DrawString(val)
+
+			wX += sectionW
+			ld.Dot = fixed.Point26_6{
+				X: fixed.I(wX),
+				Y: fixed.I(cY),
+			}
+			ld.DrawString(fmt.Sprintf("%.1f mm", h.Precipitation))
+			cY += lfh + 15
+		}
+	}
+}
+
+func readImg(name string, size string) (image.Image, error) {
+	// Open the image to overlay (foreground image)
+	path := ""
+	if size != "1x" {
+		path = fmt.Sprintf("resources/icons/%s@%s.png", name, size)
+	} else {
+		path = fmt.Sprintf("resources/icons/%s.png", name)
+	}
+	imgFile, err := os.Open(path)
+	if err != nil {
+		log.Error().Err(err).Msgf("Error opening image from path %s", path)
+		return nil, err
+	}
+	defer imgFile.Close()
+
+	// Decode the foreground image
+	img, _, err := image.Decode(imgFile)
+	if err != nil {
+		log.Error().Err(err).Msgf("Error decoding image from path %s", path)
+		return nil, err
+	}
+	return img, nil
 }
