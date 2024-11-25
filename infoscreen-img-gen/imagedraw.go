@@ -49,7 +49,7 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 
 	imgWidth := imageConfiguration.ImgW
 	imgHeight := imageConfiguration.ImgH
-	canvasImgWidth := imgWidth - 5
+	canvasImgWidth := imgWidth - 7
 	canvasImgHeight := imgHeight - 5
 	fontSizeL := imageConfiguration.FontL
 	fontSizeLMinus := imageConfiguration.FontL - 30
@@ -272,7 +272,7 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 	fRgba := image.NewRGBA(image.Rect(0, 0, imgWidth, imgHeight))
 	draw.Draw(fRgba, fRgba.Bounds(), bg, image.Point{0, 0}, draw.Src)
 
-	draw.Draw(fRgba, rgba.Bounds(), rgba, image.Point{0, 0}, draw.Src)
+	draw.Draw(fRgba, rgba.Bounds().Add(image.Point{0, 2}), rgba, image.Point{0, 0}, draw.Src)
 
 	outFile, err := os.Create(imageConfiguration.Output)
 	if err != nil {
