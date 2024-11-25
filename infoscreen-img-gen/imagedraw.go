@@ -9,7 +9,6 @@ import (
 	"image/png"
 	"math"
 	"os"
-	"os/exec"
 	"time"
 
 	"github.com/disintegration/imaging"
@@ -49,6 +48,8 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 
 	imgWidth := imageConfiguration.ImgW
 	imgHeight := imageConfiguration.ImgH
+	canvasImgWidth := imgWidth - 5
+	canvasImgHeight := imgHeight - 5
 	fontSizeL := imageConfiguration.FontL
 	fontSizeLMinus := imageConfiguration.FontL - 30
 	fontSizeM := imageConfiguration.FontM
@@ -68,7 +69,7 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 	}
 
 	fg, bg := image.Black, image.White
-	rgba := image.NewRGBA(image.Rect(0, 0, imgWidth, imgHeight))
+	rgba := image.NewRGBA(image.Rect(0, 0, canvasImgWidth, canvasImgHeight))
 	draw.Draw(rgba, rgba.Bounds(), bg, image.Point{0, 0}, draw.Src)
 
 	defaultFontHeight := int(math.Ceil(fontSizeL * spacing * dpi / 72))
@@ -140,8 +141,8 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 	}
 	cols := 2
 	rows := len(measurements) / cols
-	rowHeight := imgHeight / rows
-	colWidth := imgWidth / cols
+	rowHeight := canvasImgHeight / rows
+	colWidth := canvasImgWidth / cols
 
 	const (
 		NORMAL_CELL = 0
@@ -181,7 +182,7 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 			cellX := 0
 			cellY := currentY
 			cellW := colWidth
-			cellH := (imgHeight / 3) * 2
+			cellH := (canvasImgHeight / 3) * 2
 			switch currentSide {
 			case LEFT_SIDE:
 				cellX = 0
@@ -219,33 +220,33 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 
 		}
 
-		if currentSide != RIGHT_SIDE && currentY+10 >= imgHeight {
+		if currentSide != RIGHT_SIDE && currentY+10 >= canvasImgHeight {
 			currentSide = RIGHT_SIDE
 			currentY = 0
 		}
 
 	}
 	ruler := image.Black
-	for i := 0; i < imgHeight; i++ {
-		rgba.Set(imgWidth/2, i, ruler)
+	for i := 0; i < canvasImgHeight; i++ {
+		rgba.Set(canvasImgWidth/2, i, ruler)
 	}
 	// Left side is divided to two rows: 2/3 and 1/3
 	leftSideDivideIdx := 2
-	leftSideStop := imgWidth / 2
+	leftSideStop := canvasImgWidth / 2
 	for x := 0; x < leftSideStop; x++ {
 		rgba.Set(x, leftSideDivideIdx*rowHeight, ruler)
 	}
 	// Right side is divided to 3x1/3 rows
-	rightSideStart := imgWidth / 2
+	rightSideStart := canvasImgWidth / 2
 	for y := 0; y < rows; y++ {
-		for x := rightSideStart; x < imgWidth; x++ {
+		for x := rightSideStart; x < canvasImgWidth; x++ {
 			rgba.Set(x, y*rowHeight, ruler)
 		}
 	}
 	// Right side bottom cell is divided to two equal parts
-	rightBottomCellX := (imgWidth / 4) * 3
-	rightBottomCellY := (imgHeight / 3) * 2
-	for i := rightBottomCellY; i < imgHeight; i++ {
+	rightBottomCellX := (canvasImgWidth / 4) * 3
+	rightBottomCellY := (canvasImgHeight / 3) * 2
+	for i := rightBottomCellY; i < canvasImgHeight; i++ {
 		rgba.Set(rightBottomCellX, i, ruler)
 	}
 
@@ -255,7 +256,6 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 	formattedTime := currentTime.Format("15:04")
 	updatedText := fmt.Sprintf("%s", formattedTime)
 	smallDrawer.Dot = fixed.Point26_6{
-		//X: fixed.I(imgW) - do.MeasureString(updatedText) - fixed.I(10),
 		X: fixed.I(uX),
 		Y: fixed.I(smallFontHeight),
 	}
@@ -268,6 +268,11 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 		rgba.Set(i, smallFontHeight+uM, ruler)
 	}
 
+	fRgba := image.NewRGBA(image.Rect(0, 0, imgWidth, imgHeight))
+	draw.Draw(fRgba, fRgba.Bounds(), bg, image.Point{0, 0}, draw.Src)
+
+	draw.Draw(fRgba, rgba.Bounds(), rgba, image.Point{0, 0}, draw.Src)
+
 	outFile, err := os.Create(imageConfiguration.Output)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to write to file %s", imageConfiguration.Output)
@@ -275,7 +280,7 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 	}
 	defer outFile.Close()
 	b := bufio.NewWriter(outFile)
-	err = png.Encode(b, rgba)
+	err = png.Encode(b, fRgba)
 	if err != nil {
 		log.Error().Err(err)
 		os.Exit(1)
@@ -286,12 +291,12 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
+	/*cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
 	_, err = cmd.Output()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to run 'convert' command")
 	}
-
+	*/
 	log.Info().Msg("Successfully wrote image")
 }
 
