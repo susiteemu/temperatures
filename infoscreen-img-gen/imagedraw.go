@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/disintegration/imaging"
@@ -291,12 +292,12 @@ func drawResult(measurements []Measurement, weather *Weather, imageConfiguration
 		os.Exit(1)
 	}
 
-	/*cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
+	cmd := exec.Command("convert", imageConfiguration.Output, "-gravity", "center", "-extent", fmt.Sprintf("%dx%d", imgWidth, imgHeight), "-colorspace", "gray", "-depth", "8", "-rotate", "-90", imageConfiguration.Output)
 	_, err = cmd.Output()
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to run 'convert' command")
 	}
-	*/
+
 	log.Info().Msg("Successfully wrote image")
 }
 
