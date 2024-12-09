@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/rs/zerolog/log"
+
+	"github.com/jackc/pgx/v5"
 	"gopkg.in/yaml.v2"
 )
 
@@ -28,6 +31,7 @@ const CONFIG_PATH = "config.yml"
 var (
 	configuration = map[string]string{}
 	envFile       = map[string]string{}
+	devices       = map[string]int{}
 )
 
 func loadConfiguration() {
@@ -77,6 +81,8 @@ func main() {
 			return echo.NewHTTPError(500, "Failed to write data")
 		}
 
+		writeToPostgres(m.Temperature, m.Humidity, m.Pressure, m.Battery, m.MAC)
+
 		return c.NoContent(200)
 	}
 
@@ -114,4 +120,50 @@ func writeToInfluxDB(t float64, h float64, p uint32, b uint16, mac string, label
 
 	err := writeAPI.WritePoint(context.Background(), point)
 	return err
+}
+
+func writeToPostgres(t float64, h float64, p uint32, b uint16, mac string) {
+
+	log.Debug().Msg("Writing to Posgresql...")
+
+	connUrl := envFile["POSTGRESQL_CONN_URL"]
+	conn, err := pgx.Connect(context.Background(), connUrl)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close(context.Background())
+
+	if len(devices) == 0 {
+		rows, err := conn.Query(context.Background(), "select id, mac, label from device")
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to query all devices")
+			return
+		}
+
+		for rows.Next() {
+			var (
+				id    int
+				mac   string
+				label string
+			)
+			rows.Scan(&id, &mac, &label)
+			log.Debug().Msgf("id=%d, mac=%s, label=%s\n", id, mac, label)
+			devices[strings.ToLower(mac)] = id
+		}
+	}
+
+	deviceId, has := devices[strings.ToLower(mac)]
+	if !has {
+		log.Warn().Msgf("Unknown mac %s, skipping writing data to Postgresql", mac)
+		return
+	}
+
+	createdAt := time.Now()
+	_, err = conn.Exec(context.Background(), "insert into measurement (device_id, created_at, temperature, humidity, pressure, battery_voltage) values ($1, $2, $3, $4, $5, $6)", deviceId, createdAt, t, h, p, b)
+
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to insert data for device %d", deviceId)
+	}
+
 }
