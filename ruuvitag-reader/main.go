@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/go-ble/ble"
 	"github.com/go-ble/ble/linux"
+	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 	"github.com/peterhellberg/ruuvitag"
 	"github.com/rs/zerolog/log"
@@ -27,6 +29,7 @@ var (
 	envFile       = map[string]string{}
 	handledMacs   = []string{}
 	macs          = []string{}
+	devices       = map[string]int{}
 )
 
 func loadConfiguration() {
@@ -136,6 +139,8 @@ func handle(t float64, h float64, p uint32, ax int16, ay int16, az int16,
 		log.Info().Msgf("Successfully wrote data to Influxdb from device %s", mac)
 		handledMacs = append(handledMacs, mac)
 	}
+
+	writeToPostgres(t, h, p, ax, ay, az, b, tx, mv, seq, rssi, mac)
 }
 
 func writeToInfluxDB(t float64, h float64, p uint32, ax int16, ay int16, az int16,
@@ -171,4 +176,51 @@ func writeToInfluxDB(t float64, h float64, p uint32, ax int16, ay int16, az int1
 
 	err := writeAPI.WritePoint(context.Background(), point)
 	return err
+}
+
+func writeToPostgres(t float64, h float64, p uint32, ax int16, ay int16, az int16,
+	b uint16, tx int8, mv uint8, seq uint16, rssi int, mac string) {
+
+	log.Debug().Msg("Writing to Posgresql...")
+
+	connUrl := envFile["POSTGRESQL_CONN_URL"]
+	conn, err := pgx.Connect(context.Background(), connUrl)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close(context.Background())
+
+	if len(devices) == 0 {
+		rows, err := conn.Query(context.Background(), "select id, mac, label from device")
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to query all devices")
+			return
+		}
+
+		for rows.Next() {
+			var (
+				id    int
+				mac   string
+				label string
+			)
+			rows.Scan(&id, &mac, &label)
+			log.Debug().Msgf("id=%d, mac=%s, label=%s\n", id, mac, label)
+			devices[strings.ToLower(mac)] = id
+		}
+	}
+
+	deviceId, has := devices[strings.ToLower(mac)]
+	if !has {
+		log.Warn().Msgf("Unknown mac %s, skipping writing data to Postgresql", mac)
+		return
+	}
+
+	createdAt := time.Now()
+	_, err = conn.Exec(context.Background(), "insert into measurement (device_id, created_at, temperature, humidity, pressure, acceleration_x, acceleration_y, acceleration_z, battery_voltage, tx_power, movement_counter, measurement_sequence_number, rssi) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)", deviceId, createdAt, t, h, p, ax, ay, az, b, tx, mv, seq, rssi)
+
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to insert data for device %d", deviceId)
+	}
+
 }
