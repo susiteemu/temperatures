@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sort"
 	"strings"
 	"time"
 
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 )
 
 func readData() []Measurement {
 
-	log.Debug().Msg("Reading data from Influxdb...")
+	log.Debug().Msg("Reading data from Postgres...")
 
 	helEuTz, err := time.LoadLocation("Europe/Helsinki")
 	if err != nil {
@@ -22,47 +21,53 @@ func readData() []Measurement {
 		panic(err)
 	}
 
-	url := envFile["INFLUXDB_URL"]
-	token := envFile["INFLUXDB_TOKEN"]
-	client := influxdb2.NewClient(url, token)
+	connUrl := envFile["POSTGRESQL_CONN_URL"]
+	conn, err := pgx.Connect(context.Background(), connUrl)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to connect to database")
+		return []Measurement{}
+	}
+	defer conn.Close(context.Background())
 
-	org := envFile["INFLUXDB_ORG"]
-	bucket := envFile["INFLUXDB_BUCKET"]
+	sql := `WITH RankedMeasurements AS (
+    SELECT d.mac as mac, d.label as label, m.temperature as temperature, m.created_at as created_at, ROW_NUMBER() OVER (PARTITION BY d.mac ORDER BY m.created_at DESC) AS rn
+    FROM measurement m
+    LEFT JOIN device d ON d.id = m.device_id
+    WHERE m.created_at >= NOW() - INTERVAL '30 minutes'
+)
 
-	query := fmt.Sprintf(`from(bucket: "%s")
-			|> range(start: -30m)
-            |> filter(fn: (r) => r._measurement == "ruuvi_measurements")
-            |> filter(fn: (r) => r._field == "temperature")
-            |> group(columns: ["mac"])
-			|> sort(columns: ["_time"], desc: true)
-			|> limit(n: 5)`,
-		bucket)
-
-	results, err := client.QueryAPI(org).Query(context.Background(), query)
-	log.Debug().Msg("Queried results...")
+SELECT mac, label, temperature, created_at
+FROM RankedMeasurements
+WHERE rn <= 5
+ORDER BY mac, created_at DESC;
+`
+	rows, err := conn.Query(context.Background(), sql)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to query data")
 		return []Measurement{}
 	}
 	log.Debug().Msg("No errors encountered...")
 	rawMeasurements := []RawMeasurement{}
-	for results.Next() {
-		mac := results.Record().ValueByKey("mac").(string)
-		label := results.Record().ValueByKey("tag_label").(string)
-		val := float32(results.Record().Value().(float64))
-		at := results.Record().Time().In(helEuTz)
-		log.Info().Msgf("Label: %s, mac: %s, value: %f, at: %s", label, mac, val, at)
+	for rows.Next() {
+		var (
+			mac         string
+			label       string
+			temperature float64
+			at          time.Time
+		)
+		rows.Scan(&mac, &label, &temperature, &at)
 
+		at = at.In(helEuTz)
 		rawMeasurement := RawMeasurement{
 			Label: label,
 			Mac:   mac,
-			Value: val,
+			Value: float32(temperature),
 			At:    at,
 		}
+
+		log.Debug().Msgf("Read measurement: %v", rawMeasurement)
+
 		rawMeasurements = append(rawMeasurements, rawMeasurement)
-	}
-	if err := results.Err(); err != nil {
-		log.Fatal().Err(err)
 	}
 
 	measurements := processRawMeasurements(rawMeasurements)
