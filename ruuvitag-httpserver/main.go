@@ -19,11 +19,18 @@ import (
 )
 
 type Measurement struct {
-	MAC         string  `json:"mac"`
-	Temperature float64 `json:"temp"`
-	Humidity    float64 `json:"humidity"`
-	Pressure    uint32  `json:"pressure"`
-	Battery     uint16  `json:"battery"`
+	MAC                       string  `json:"mac"`
+	Temperature               float64 `json:"temp"`
+	Humidity                  float64 `json:"humidity"`
+	Pressure                  uint32  `json:"pressure"`
+	AccelerationX             int16   `json:"accelerationX"`
+	AccelerationY             int16   `json:"accelerationY"`
+	AccelerationZ             int16   `json:"accelerationZ"`
+	Battery                   uint16  `json:"battery"`
+	TxPower                   uint8   `json:"txPower"`
+	MovementCounter           uint8   `json:"movementCounter"`
+	MeasurementSequenceNumber uint16  `json:"measurementSequenceNumber"`
+	Rssi                      int     `json:"rssi"`
 }
 
 const CONFIG_PATH = "config.yml"
@@ -81,7 +88,7 @@ func main() {
 			return echo.NewHTTPError(500, "Failed to write data")
 		}
 
-		writeToPostgres(m.Temperature, m.Humidity, m.Pressure, m.Battery, m.MAC)
+		writeToPostgres(m)
 
 		return c.NoContent(200)
 	}
@@ -122,7 +129,7 @@ func writeToInfluxDB(t float64, h float64, p uint32, b uint16, mac string, label
 	return err
 }
 
-func writeToPostgres(t float64, h float64, p uint32, b uint16, mac string) {
+func writeToPostgres(m *Measurement) {
 
 	log.Debug().Msg("Writing to Posgresql...")
 
@@ -153,14 +160,27 @@ func writeToPostgres(t float64, h float64, p uint32, b uint16, mac string) {
 		}
 	}
 
-	deviceId, has := devices[strings.ToLower(mac)]
+	deviceId, has := devices[strings.ToLower(m.MAC)]
 	if !has {
-		log.Warn().Msgf("Unknown mac %s, skipping writing data to Postgresql", mac)
+		log.Warn().Msgf("Unknown mac %s, skipping writing data to Postgresql", m.MAC)
 		return
 	}
 
 	createdAt := time.Now()
-	_, err = conn.Exec(context.Background(), "insert into measurement (device_id, created_at, temperature, humidity, pressure, battery_voltage) values ($1, $2, $3, $4, $5, $6)", deviceId, createdAt, t, h, p, b)
+	createdAt = createdAt.Add(time.Duration(-1*createdAt.Second()) * time.Second)
+
+	var measurementId int
+	err = conn.QueryRow(context.Background(), "select id from measurement where device_id=$1 and created_at=$2", deviceId, createdAt).Scan(&measurementId)
+	if err != nil {
+		measurementId = -1
+		log.Error().Err(err).Msgf("Failed to query device %d measurement at %v", deviceId, createdAt)
+	}
+
+	if measurementId == -1 {
+		_, err = conn.Exec(context.Background(), "insert into measurement (device_id, created_at, temperature, humidity, pressure, acceleration_x, acceleration_y, acceleration_z, battery_voltage, tx_power, movement_counter, measurement_sequence_number, rssi) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)", deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi)
+	} else {
+		_, err = conn.Exec(context.Background(), "update measurement set device_id=$1, created_at=$2, temperature=$3, humidity=$4, pressure=$5, acceleration_x=$6, acceleration_y=$7, acceleration_z=$8, battery_voltage=$9, tx_power=$10, movement_counter=$11, measurement_sequence_number=$12, rssi=$13) where id=$4", deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi, measurementId)
+	}
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to insert data for device %d", deviceId)
