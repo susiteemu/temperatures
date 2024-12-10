@@ -17,9 +17,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
-
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	"github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 const CONFIG_PATH = "config.yml"
@@ -27,7 +24,6 @@ const CONFIG_PATH = "config.yml"
 var (
 	configuration = map[string]string{}
 	envFile       = map[string]string{}
-	handledMacs   = []string{}
 	macs          = []string{}
 	devices       = map[string]int{}
 )
@@ -142,60 +138,12 @@ func filter(a ble.Advertisement) bool {
 func handle(t float64, h float64, p uint32, ax int16, ay int16, az int16,
 	b uint16, tx int8, mv uint8, seq uint16, rssi int, mac string, label string) {
 
-	if slices.Contains(handledMacs, mac) {
-		log.Debug().Msgf("Device with mac %s already handled this round", mac)
-		return
-	}
-
-	err := writeToInfluxDB(t, h, p, ax, ay, az, b, tx, mv, seq, rssi, mac, label)
-	if err != nil {
-		log.Error().Err(err).Msgf("Failed to write data to Influxdb from device %s", mac)
-	} else {
-		log.Info().Msgf("Successfully wrote data to Influxdb from device %s", mac)
-		handledMacs = append(handledMacs, mac)
-	}
-
-	err = sendToRuuviHttp(t, h, p, ax, ay, az, b, tx, mv, seq, rssi, mac)
+	err := sendToRuuviHttp(t, h, p, ax, ay, az, b, tx, mv, seq, rssi, mac)
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to send data to Ruuvi HTTP from device %s", mac)
 	} else {
 		log.Info().Msgf("Successfully sent data to Ruuvi HTTP from device %s", mac)
 	}
-}
-
-func writeToInfluxDB(t float64, h float64, p uint32, ax int16, ay int16, az int16,
-	b uint16, tx int8, mv uint8, seq uint16, rssi int, mac string, label string) error {
-
-	log.Debug().Msg("Writing to Influxdb...")
-
-	url := envFile["INFLUXDB_URL"]
-	token := envFile["INFLUXDB_TOKEN"]
-	client := influxdb2.NewClient(url, token)
-
-	org := envFile["INFLUXDB_ORG"]
-	bucket := envFile["INFLUXDB_BUCKET"]
-	writeAPI := client.WriteAPIBlocking(org, bucket)
-	tags := map[string]string{
-		"mac":       mac,
-		"tag_label": label,
-	}
-	fields := map[string]interface{}{
-		"temperature":               t,
-		"humidity":                  h,
-		"pressure":                  p,
-		"accelerationX":             ax,
-		"accelerationY":             ay,
-		"accelerationZ":             az,
-		"batteryVoltage":            b,
-		"txPower":                   tx,
-		"movementCounter":           mv,
-		"measurementSequenceNumber": seq,
-		"rssi":                      rssi,
-	}
-	point := write.NewPoint("ruuvi_measurements", tags, fields, time.Now())
-
-	err := writeAPI.WritePoint(context.Background(), point)
-	return err
 }
 
 func sendToRuuviHttp(t float64, h float64, p uint32, ax int16, ay int16, az int16,

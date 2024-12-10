@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	"github.com/influxdata/influxdb-client-go/v2/api/write"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -75,20 +73,11 @@ func main() {
 		}
 		log.Info().Msgf("Received new measurement: %v", m)
 
-		deviceKey := strings.ToUpper(strings.ReplaceAll(m.MAC, ":", "_"))
-
-		label, ok := configuration[deviceKey]
-		if !ok {
-			return echo.NewHTTPError(400, "Unknown MAC address")
-		}
-
-		err := writeToInfluxDB(m.Temperature, m.Humidity, m.Pressure, m.Battery, m.MAC, label)
+		err := writeToPostgres(m)
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to write to Influxdb")
 			return echo.NewHTTPError(500, "Failed to write data")
 		}
-
-		writeToPostgres(m)
 
 		return c.NoContent(200)
 	}
@@ -102,34 +91,7 @@ func main() {
 
 }
 
-func writeToInfluxDB(t float64, h float64, p uint32, b uint16, mac string, label string) error {
-
-	log.Debug().Msg("Writing to Influxdb...")
-
-	url := envFile["INFLUXDB_URL"]
-	token := envFile["INFLUXDB_TOKEN"]
-	client := influxdb2.NewClient(url, token)
-
-	org := envFile["INFLUXDB_ORG"]
-	bucket := envFile["INFLUXDB_BUCKET"]
-	writeAPI := client.WriteAPIBlocking(org, bucket)
-	tags := map[string]string{
-		"mac":       mac,
-		"tag_label": label,
-	}
-	fields := map[string]interface{}{
-		"temperature":    t,
-		"humidity":       h,
-		"pressure":       p,
-		"batteryVoltage": b,
-	}
-	point := write.NewPoint("ruuvi_measurements", tags, fields, time.Now())
-
-	err := writeAPI.WritePoint(context.Background(), point)
-	return err
-}
-
-func writeToPostgres(m *Measurement) {
+func writeToPostgres(m *Measurement) error {
 
 	log.Debug().Msg("Writing to Posgresql...")
 
@@ -145,7 +107,7 @@ func writeToPostgres(m *Measurement) {
 		rows, err := conn.Query(context.Background(), "select id, mac, label from device")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to query all devices")
-			return
+			return err
 		}
 
 		for rows.Next() {
@@ -163,7 +125,7 @@ func writeToPostgres(m *Measurement) {
 	deviceId, has := devices[strings.ToLower(m.MAC)]
 	if !has {
 		log.Warn().Msgf("Unknown mac %s, skipping writing data to Postgresql", m.MAC)
-		return
+		return fmt.Errorf("Unknown mac %s, skipping writing data to Postgresql", m.MAC)
 	}
 
 	createdAt := time.Now().Truncate(time.Minute)
@@ -182,6 +144,8 @@ func writeToPostgres(m *Measurement) {
 
 	if err != nil {
 		log.Error().Err(err).Msgf("Failed to insert data for device %d", deviceId)
+		return err
 	}
 
+	return nil
 }
