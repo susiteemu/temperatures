@@ -27,7 +27,7 @@ type Measurement struct {
 	AccelerationY             int16   `json:"accelerationY"`
 	AccelerationZ             int16   `json:"accelerationZ"`
 	Battery                   uint16  `json:"battery"`
-	TxPower                   uint8   `json:"txPower"`
+	TxPower                   int8    `json:"txPower"`
 	MovementCounter           uint8   `json:"movementCounter"`
 	MeasurementSequenceNumber uint16  `json:"measurementSequenceNumber"`
 	Rssi                      int     `json:"rssi"`

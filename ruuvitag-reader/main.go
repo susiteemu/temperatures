@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -12,9 +11,10 @@ import (
 
 	"github.com/go-ble/ble"
 	"github.com/go-ble/ble/linux"
-	"github.com/jackc/pgx/v5"
+	"github.com/go-resty/resty/v2"
 	"github.com/joho/godotenv"
 	"github.com/peterhellberg/ruuvitag"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 
@@ -31,6 +31,21 @@ var (
 	macs          = []string{}
 	devices       = map[string]int{}
 )
+
+type Measurement struct {
+	MAC                       string  `json:"mac"`
+	Temperature               float64 `json:"temp"`
+	Humidity                  float64 `json:"humidity"`
+	Pressure                  uint32  `json:"pressure"`
+	AccelerationX             int16   `json:"accelerationX"`
+	AccelerationY             int16   `json:"accelerationY"`
+	AccelerationZ             int16   `json:"accelerationZ"`
+	Battery                   uint16  `json:"battery"`
+	TxPower                   int8    `json:"txPower"`
+	MovementCounter           uint8   `json:"movementCounter"`
+	MeasurementSequenceNumber uint16  `json:"measurementSequenceNumber"`
+	Rssi                      int     `json:"rssi"`
+}
 
 func loadConfiguration() {
 
@@ -140,7 +155,12 @@ func handle(t float64, h float64, p uint32, ax int16, ay int16, az int16,
 		handledMacs = append(handledMacs, mac)
 	}
 
-	writeToPostgres(t, h, p, ax, ay, az, b, tx, mv, seq, rssi, mac)
+	err = sendToRuuviHttp(t, h, p, ax, ay, az, b, tx, mv, seq, rssi, mac)
+	if err != nil {
+		log.Error().Err(err).Msgf("Failed to send data to Ruuvi HTTP from device %s", mac)
+	} else {
+		log.Info().Msgf("Successfully sent data to Ruuvi HTTP from device %s", mac)
+	}
 }
 
 func writeToInfluxDB(t float64, h float64, p uint32, ax int16, ay int16, az int16,
@@ -178,49 +198,61 @@ func writeToInfluxDB(t float64, h float64, p uint32, ax int16, ay int16, az int1
 	return err
 }
 
-func writeToPostgres(t float64, h float64, p uint32, ax int16, ay int16, az int16,
-	b uint16, tx int8, mv uint8, seq uint16, rssi int, mac string) {
+func sendToRuuviHttp(t float64, h float64, p uint32, ax int16, ay int16, az int16,
+	b uint16, tx int8, mv uint8, seq uint16, rssi int, mac string) error {
 
-	log.Debug().Msg("Writing to Posgresql...")
+	m := Measurement{
+		MAC:                       mac,
+		Temperature:               t,
+		Humidity:                  h,
+		Pressure:                  p,
+		AccelerationX:             ax,
+		AccelerationY:             ay,
+		AccelerationZ:             az,
+		Battery:                   b,
+		TxPower:                   tx,
+		MovementCounter:           mv,
+		MeasurementSequenceNumber: seq,
+		Rssi:                      rssi,
+	}
+	url := envFile["RUUVI_HTTP_SERVER_ADD_MEASUREMENT_API_URL"]
 
-	connUrl := envFile["POSTGRESQL_CONN_URL"]
-	conn, err := pgx.Connect(context.Background(), connUrl)
+	var client = resty.New().SetLogger(newLogger(&log.Logger))
+	r := client.R()
+
+	r.SetHeader("Content-Type", "application/json")
+	r.SetBody(m)
+
+	resp, err := r.Post(url)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		log.Error().Err(err).Msgf("Failed to add measurement %v", m)
+		return err
 	}
-	defer conn.Close(context.Background())
-
-	if len(devices) == 0 {
-		rows, err := conn.Query(context.Background(), "select id, mac, label from device")
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to query all devices")
-			return
-		}
-
-		for rows.Next() {
-			var (
-				id    int
-				mac   string
-				label string
-			)
-			rows.Scan(&id, &mac, &label)
-			log.Debug().Msgf("id=%d, mac=%s, label=%s\n", id, mac, label)
-			devices[strings.ToLower(mac)] = id
-		}
+	if resp.IsError() {
+		log.Error().Msgf("Got %d as response code", resp.StatusCode())
+		return err
 	}
+	return nil
 
-	deviceId, has := devices[strings.ToLower(mac)]
-	if !has {
-		log.Warn().Msgf("Unknown mac %s, skipping writing data to Postgresql", mac)
-		return
+}
+
+type restyZeroLogger struct {
+	logger *zerolog.Logger
+}
+
+func newLogger(zlogger *zerolog.Logger) *restyZeroLogger {
+	return &restyZeroLogger{
+		logger: zlogger,
 	}
+}
+func (l *restyZeroLogger) Errorf(format string, v ...interface{}) {
+	l.logger.Error().Msgf(format, v...)
+}
 
-	createdAt := time.Now()
-	_, err = conn.Exec(context.Background(), "insert into measurement (device_id, created_at, temperature, humidity, pressure, acceleration_x, acceleration_y, acceleration_z, battery_voltage, tx_power, movement_counter, measurement_sequence_number, rssi) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)", deviceId, createdAt, t, h, p, ax, ay, az, b, tx, mv, seq, rssi)
+func (l *restyZeroLogger) Warnf(format string, v ...interface{}) {
+	l.logger.Warn().Msgf(format, v...)
+}
 
-	if err != nil {
-		log.Error().Err(err).Msgf("Failed to insert data for device %d", deviceId)
-	}
-
+func (l *restyZeroLogger) Debugf(format string, v ...interface{}) {
+	l.logger.Debug().Msgf(format, v...)
 }
