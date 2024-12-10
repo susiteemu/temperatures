@@ -166,9 +166,7 @@ func writeToPostgres(m *Measurement) {
 		return
 	}
 
-	createdAt := time.Now()
-	createdAt = createdAt.Add(time.Duration(-1*createdAt.Second()) * time.Second)
-
+	createdAt := time.Now().Truncate(time.Minute)
 	var measurementId int
 	err = conn.QueryRow(context.Background(), "select id from measurement where device_id=$1 and created_at=$2", deviceId, createdAt).Scan(&measurementId)
 	if err != nil {
