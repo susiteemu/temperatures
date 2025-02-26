@@ -139,7 +139,7 @@ func writeToPostgres(m *Measurement) error {
 	if measurementId == -1 {
 		_, err = conn.Exec(context.Background(), "insert into measurement (device_id, created_at, temperature, humidity, pressure, acceleration_x, acceleration_y, acceleration_z, battery_voltage, tx_power, movement_counter, measurement_sequence_number, rssi) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)", deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi)
 	} else {
-		_, err = conn.Exec(context.Background(), "update measurement set device_id=$1, created_at=$2, temperature=$3, humidity=$4, pressure=$5, acceleration_x=$6, acceleration_y=$7, acceleration_z=$8, battery_voltage=$9, tx_power=$10, movement_counter=$11, measurement_sequence_number=$12, rssi=$13) where id=$4", deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi, measurementId)
+		_, err = conn.Exec(context.Background(), "update measurement set device_id=$1, created_at=$2, temperature=$3, humidity=$4, pressure=$5, acceleration_x=$6, acceleration_y=$7, acceleration_z=$8, battery_voltage=$9, tx_power=$10, movement_counter=$11, measurement_sequence_number=$12, rssi=$13 where id=$14", deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi, measurementId)
 	}
 
 	if err != nil {
