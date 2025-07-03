@@ -158,13 +158,13 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 	if measurement.ID == -1 {
 		insertStmt := Measurement.
 			INSERT(Measurement.MutableColumns).
-			VALUES(measurement)
+			MODEL(measurement)
 
 		_, err = insertStmt.Exec(db)
 	} else {
 		updateStmt := Measurement.
 			UPDATE(Measurement.MutableColumns).
-			SET(measurement).
+			MODEL(measurement).
 			WHERE(Measurement.ID.EQ(Int32(measurement.ID)))
 
 		_, err = updateStmt.Exec(db)
