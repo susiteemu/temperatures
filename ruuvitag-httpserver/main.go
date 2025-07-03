@@ -123,6 +123,8 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 		}
 	}
 
+	log.Info().Msgf("Devices %v", devices)
+
 	deviceId, has := devices[strings.ToLower(m.MAC)]
 	if !has {
 		log.Warn().Msgf("Unknown mac %s, skipping writing data to Postgresql", m.MAC)
