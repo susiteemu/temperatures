@@ -1,0 +1,12 @@
+url: http://localhost:1323/measurements
+method: POST
+headers:
+  Content-Type: application/json
+body: >
+  {
+    "mac": "d0:f1:90:0a:b9:6e",
+    "temp": 23.456,
+    "humidity": 33.44,
+    "pressure": 1024,
+    "battery": 1300
+  }
