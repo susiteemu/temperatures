@@ -26,15 +26,15 @@ type MeasurementJson struct {
 	MAC                       string  `json:"mac"`
 	Temperature               float64 `json:"temp"`
 	Humidity                  float64 `json:"humidity"`
-	Pressure                  uint32  `json:"pressure"`
-	AccelerationX             int16   `json:"accelerationX"`
-	AccelerationY             int16   `json:"accelerationY"`
-	AccelerationZ             int16   `json:"accelerationZ"`
-	Battery                   uint16  `json:"battery"`
-	TxPower                   int8    `json:"txPower"`
-	MovementCounter           uint8   `json:"movementCounter"`
-	MeasurementSequenceNumber uint16  `json:"measurementSequenceNumber"`
-	Rssi                      int     `json:"rssi"`
+	Pressure                  int32   `json:"pressure"`
+	AccelerationX             int32   `json:"accelerationX"`
+	AccelerationY             int32   `json:"accelerationY"`
+	AccelerationZ             int32   `json:"accelerationZ"`
+	Battery                   int32   `json:"battery"`
+	TxPower                   int32   `json:"txPower"`
+	MovementCounter           int64   `json:"movementCounter"`
+	MeasurementSequenceNumber int64   `json:"measurementSequenceNumber"`
+	Rssi                      int32   `json:"rssi"`
 }
 
 const CONFIG_PATH = "config.yml"
@@ -43,7 +43,7 @@ var (
 	db            *sql.DB
 	configuration = map[string]string{}
 	envFile       = map[string]string{}
-	devices       = map[string]int64{}
+	devices       = map[string]int32{}
 )
 
 func loadConfiguration() {
@@ -122,7 +122,7 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 			return err
 		}
 		for _, device := range allDevices {
-			devices[strings.ToLower(device.Mac)] = int64(device.ID)
+			devices[strings.ToLower(device.Mac)] = int32(device.ID)
 		}
 	}
 
@@ -134,23 +134,37 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 	createdAt := time.Now().Truncate(time.Minute)
 	var measurement model.Measurement
 
-	selectMeasurementStmt := SELECT(Measurement.ID).FROM(Measurement).WHERE(Measurement.DeviceID.EQ(Int(deviceId)).AND(Measurement.CreatedAt.EQ(TimestampzT(createdAt))))
+	selectMeasurementStmt := SELECT(Measurement.AllColumns).FROM(Measurement).WHERE(Measurement.DeviceID.EQ(Int32(deviceId)).AND(Measurement.CreatedAt.EQ(TimestampzT(createdAt))))
 
 	err = selectMeasurementStmt.Query(db, &measurement)
 	if err != nil {
 		measurement.ID = -1
+		measurement.CreatedAt = createdAt
 	}
+
+	measurement.DeviceID = int32(deviceId)
+	measurement.Temperature = &m.Temperature
+	measurement.Humidity = &m.Humidity
+	measurement.Pressure = &m.Pressure
+	measurement.AccelerationX = &m.AccelerationX
+	measurement.AccelerationY = &m.AccelerationY
+	measurement.AccelerationZ = &m.AccelerationZ
+	measurement.BatteryVoltage = &m.Battery
+	measurement.TxPower = &m.TxPower
+	measurement.MovementCounter = &m.MovementCounter
+	measurement.MeasurementSequenceNumber = &m.MeasurementSequenceNumber
+	measurement.Rssi = &m.Rssi
 
 	if measurement.ID == -1 {
 		insertStmt := Measurement.
-			INSERT(Measurement.DeviceID, Measurement.CreatedAt, Measurement.Temperature, Measurement.Humidity, Measurement.Pressure, Measurement.AccelerationX, Measurement.AccelerationY, Measurement.AccelerationZ, Measurement.BatteryVoltage, Measurement.TxPower, Measurement.MovementCounter, Measurement.MeasurementSequenceNumber, Measurement.Rssi).
-			VALUES(deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi)
+			INSERT(Measurement.MutableColumns).
+			VALUES(measurement)
 
 		_, err = insertStmt.Exec(db)
 	} else {
 		updateStmt := Measurement.
-			UPDATE(Measurement.DeviceID, Measurement.CreatedAt, Measurement.Temperature, Measurement.Humidity, Measurement.Pressure, Measurement.AccelerationX, Measurement.AccelerationY, Measurement.AccelerationZ, Measurement.BatteryVoltage, Measurement.TxPower, Measurement.MovementCounter, Measurement.MeasurementSequenceNumber, Measurement.Rssi).
-			SET(deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi).
+			UPDATE(Measurement.MutableColumns).
+			SET(measurement).
 			WHERE(Measurement.ID.EQ(Int32(measurement.ID)))
 
 		_, err = updateStmt.Exec(db)
