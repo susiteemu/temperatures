@@ -18,6 +18,8 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"gopkg.in/yaml.v2"
+
+	_ "github.com/lib/pq"
 )
 
 type MeasurementJson struct {

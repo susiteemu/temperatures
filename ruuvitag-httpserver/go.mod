@@ -6,6 +6,7 @@ require (
 	github.com/go-jet/jet/v2 v2.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.13.4
+	github.com/lib/pq v1.10.9
 	github.com/rs/zerolog v1.34.0
 	gopkg.in/yaml.v2 v2.4.0
 )
