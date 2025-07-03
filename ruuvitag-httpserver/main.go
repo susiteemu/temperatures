@@ -72,8 +72,9 @@ func loadConfiguration() {
 func main() {
 	loadConfiguration()
 
+	var err error
 	connectString := envFile["POSTGRESQL_CONN_URL"]
-	db, err := sql.Open("postgres", connectString)
+	db, err = sql.Open("postgres", connectString)
 	if err != nil {
 		panic(err)
 	}
