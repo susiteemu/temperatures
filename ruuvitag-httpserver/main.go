@@ -135,17 +135,17 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 		return fmt.Errorf("unknown mac %s, skipping writing data to Postgresql", m.MAC)
 	}
 	createdAt := time.Now().Truncate(time.Minute)
-	var measurementId int64
+	var measurement model.Measurement
 
 	selectMeasurementStmt := SELECT(Measurement.ID).FROM(Measurement).WHERE(Measurement.DeviceID.EQ(Int(deviceId)).AND(Measurement.CreatedAt.EQ(TimestampzT(createdAt))))
 
-	err = selectMeasurementStmt.Query(db, &measurementId)
+	err = selectMeasurementStmt.Query(db, &measurement)
 	if err != nil {
-		measurementId = -1
+		measurement.ID = -1
 		log.Error().Err(err).Msgf("Failed to query device %d measurement at %v", deviceId, createdAt)
 	}
 
-	if measurementId == -1 {
+	if measurement.ID == -1 {
 		insertStmt := Measurement.
 			INSERT(Measurement.DeviceID, Measurement.CreatedAt, Measurement.Temperature, Measurement.Humidity, Measurement.Pressure, Measurement.AccelerationX, Measurement.AccelerationY, Measurement.AccelerationZ, Measurement.BatteryVoltage, Measurement.TxPower, Measurement.MovementCounter, Measurement.MeasurementSequenceNumber, Measurement.Rssi).
 			VALUES(deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi)
@@ -155,7 +155,7 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 		updateStmt := Measurement.
 			UPDATE(Measurement.DeviceID, Measurement.CreatedAt, Measurement.Temperature, Measurement.Humidity, Measurement.Pressure, Measurement.AccelerationX, Measurement.AccelerationY, Measurement.AccelerationZ, Measurement.BatteryVoltage, Measurement.TxPower, Measurement.MovementCounter, Measurement.MeasurementSequenceNumber, Measurement.Rssi).
 			SET(deviceId, createdAt, m.Temperature, m.Humidity, m.Pressure, m.AccelerationX, m.AccelerationY, m.AccelerationZ, m.Battery, m.TxPower, m.MovementCounter, m.MeasurementSequenceNumber, m.Rssi).
-			WHERE(Measurement.ID.EQ(Int(measurementId)))
+			WHERE(Measurement.ID.EQ(Int32(measurement.ID)))
 
 		_, err = updateStmt.Exec(db)
 	}
