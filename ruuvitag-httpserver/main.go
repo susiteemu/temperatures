@@ -122,12 +122,9 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 			return err
 		}
 		for _, device := range allDevices {
-			log.Info().Msgf("Found device %d, %s", device.ID, device.Mac)
 			devices[strings.ToLower(device.Mac)] = int64(device.ID)
 		}
 	}
-
-	log.Info().Msgf("Devices %v", devices)
 
 	deviceId, has := devices[strings.ToLower(m.MAC)]
 	if !has {
@@ -142,7 +139,6 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 	err = selectMeasurementStmt.Query(db, &measurement)
 	if err != nil {
 		measurement.ID = -1
-		log.Error().Err(err).Msgf("Failed to query device %d measurement at %v", deviceId, createdAt)
 	}
 
 	if measurement.ID == -1 {
