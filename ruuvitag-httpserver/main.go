@@ -118,6 +118,7 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 		}
 		stmt.Query(db, &allDevices)
 		for _, device := range allDevices {
+			log.Info().Msgf("Found device %d, %s", device.ID, device.Mac)
 			devices[strings.ToLower(device.Mac)] = int64(device.ID)
 		}
 	}
