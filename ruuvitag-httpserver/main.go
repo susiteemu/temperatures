@@ -116,7 +116,11 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 		var allDevices []struct {
 			model.Device
 		}
-		stmt.Query(db, &allDevices)
+		err = stmt.Query(db, &allDevices)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to select all devices")
+			return err
+		}
 		for _, device := range allDevices {
 			log.Info().Msgf("Found device %d, %s", device.ID, device.Mac)
 			devices[strings.ToLower(device.Mac)] = int64(device.ID)
