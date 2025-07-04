@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -93,10 +95,63 @@ func main() {
 
 		err := writeToPostgresWithJet(m)
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to write to Influxdb")
+			log.Error().Err(err).Msgf("Failed to write to Postgres")
 			return echo.NewHTTPError(500, "Failed to write data")
 		}
 
+		return c.NoContent(200)
+	}
+
+	postBinaryMeasurement := func(c echo.Context) error {
+		binaryData, err := io.ReadAll(c.Request().Body)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to read binary body")
+			return echo.NewHTTPError(400, "Invalid data")
+		}
+
+		if len(binaryData) < 16 {
+			log.Error().Err(err).Msgf("Binary body is wrong length: %d", len(binaryData))
+			return echo.NewHTTPError(400, "Invalid data: wrong length")
+		}
+		// Check that data has expected manufacturer id and version
+		// Mnufacturer: 0x1CA3
+		// Version: 0x01
+		if !bytes.HasPrefix(binaryData, []byte{0x1C, 0xA3, 0x01}) {
+			log.Error().Msgf("Data prefix is unexpected. Full data: %v", binaryData)
+			return echo.NewHTTPError(400, "Invalid data: prefix is unexpected")
+		}
+
+		rawTemperature := int16(binaryData[3])<<8 | int16(binaryData[4])
+		temperature := 0.005 * float64(rawTemperature)
+
+		rawHumidity := int16(binaryData[5])<<8 | int16(binaryData[6])
+		humidity := 0.0025 * float64(rawHumidity)
+
+		rawBattery := uint16(binaryData[7])<<3 | uint16(binaryData[8])>>5
+		battery := rawBattery + 1600
+
+		rawMac := binaryData[9:15]
+		var hexParts []string
+		for _, b := range rawMac {
+			hexParts = append(hexParts, fmt.Sprintf("%02x", b))
+		}
+		macString := strings.Join(hexParts, ":")
+
+		m := new(MeasurementJson)
+		m.Temperature = temperature
+		m.Humidity = humidity
+		m.Battery = int32(battery)
+		m.MAC = macString
+
+		log.Info().Msgf("Received new measurement: %v", m)
+		// TODO: uncomment
+		/*
+			err = writeToPostgresWithJet(m)
+			if err != nil {
+				log.Error().Err(err).Msgf("Failed to write to Postgres")
+				return echo.NewHTTPError(500, "Failed to write data")
+			}
+		*/
 		return c.NoContent(200)
 	}
 
@@ -105,6 +160,7 @@ func main() {
 	e.Static("/css", "css")
 	e.Use(middleware.Logger())
 	e.POST("/measurements", postMeasurement)
+	e.POST("/v2/measurements", postBinaryMeasurement)
 	e.Logger.Fatal(e.Start(":1323"))
 }
 
