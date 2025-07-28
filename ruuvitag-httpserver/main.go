@@ -144,14 +144,13 @@ func main() {
 		m.MAC = macString
 
 		log.Info().Msgf("Received new measurement: %v", m)
-		// TODO: uncomment
-		/*
-			err = writeToPostgresWithJet(m)
-			if err != nil {
-				log.Error().Err(err).Msgf("Failed to write to Postgres")
-				return echo.NewHTTPError(500, "Failed to write data")
-			}
-		*/
+
+		err = writeToPostgresWithJet(m)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to write to Postgres")
+			return echo.NewHTTPError(500, "Failed to write data")
+		}
+
 		return c.NoContent(200)
 	}
 
