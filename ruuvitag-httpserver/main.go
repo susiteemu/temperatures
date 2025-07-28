@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -18,8 +17,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/rs/zerolog/log"
-
-	"gopkg.in/yaml.v2"
 
 	_ "github.com/lib/pq"
 )
@@ -39,30 +36,14 @@ type MeasurementJson struct {
 	Rssi                      int32   `json:"rssi"`
 }
 
-const CONFIG_PATH = "config.yml"
-
 var (
-	db            *sql.DB
-	configuration = map[string]string{}
-	envFile       = map[string]string{}
-	devices       = map[string]int32{}
+	db      *sql.DB
+	envFile = map[string]string{}
+	devices = map[string]int32{}
 )
 
 func loadConfiguration() {
-	file, err := os.ReadFile("config.yml")
-	if err != nil {
-		log.Error().Err(err).Msgf("Failed to read %s", CONFIG_PATH)
-		panic(err)
-	}
-
-	err = yaml.Unmarshal(file, &configuration)
-	if err != nil {
-		log.Error().Err(err).Msgf("Failed to unmarshal configuration")
-		panic(err)
-	}
-	log.Info().Msgf("Loaded configuration: %v", configuration)
-
-	envFile, err = godotenv.Read(".env")
+	envFile, err := godotenv.Read(".env")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to read from env file")
 		panic(err)
