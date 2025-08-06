@@ -13,6 +13,8 @@ import (
 
 	. "github.com/go-jet/jet/v2/postgres"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -37,9 +39,10 @@ type MeasurementJson struct {
 }
 
 var (
-	db      *sql.DB
-	envFile = map[string]string{}
-	devices = map[string]int32{}
+	db         *sql.DB
+	mqttClient mqtt.Client
+	envFile    = map[string]string{}
+	devices    = map[string]int32{}
 )
 
 func loadConfiguration() {
@@ -66,6 +69,19 @@ func main() {
 	db.SetConnMaxLifetime(30 * time.Minute)
 	defer db.Close()
 
+	opts := mqtt.NewClientOptions().
+		AddBroker(envFile["MQTT_BROKER"]).
+		SetClientID("ruuvitag-httpserver").
+		SetUsername(envFile["MQTT_USER_NAME"]).
+		SetPassword(envFile["MQTT_USER_PASSWORD"]).
+		SetKeepAlive(2 * time.Second).
+		SetPingTimeout(1 * time.Second)
+
+	mqttClient = mqtt.NewClient(opts)
+	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
+		log.Fatal().Msgf("MQTT connection error: %v", token.Error())
+	}
+
 	postMeasurement := func(c echo.Context) error {
 		m := new(MeasurementJson)
 		if err := c.Bind(m); err != nil {
@@ -74,9 +90,9 @@ func main() {
 		}
 		log.Info().Msgf("Received new measurement: %v", m)
 
-		err := writeToPostgresWithJet(m)
+		err := storeMeasurement(m)
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to write to Postgres")
+			log.Error().Err(err).Msgf("Failed to write to data")
 			return echo.NewHTTPError(500, "Failed to write data")
 		}
 
@@ -126,9 +142,9 @@ func main() {
 
 		log.Info().Msgf("Received new measurement: %v", m)
 
-		err = writeToPostgresWithJet(m)
+		err = storeMeasurement(m)
 		if err != nil {
-			log.Error().Err(err).Msgf("Failed to write to Postgres")
+			log.Error().Err(err).Msgf("Failed to write data")
 			return echo.NewHTTPError(500, "Failed to write data")
 		}
 
@@ -144,7 +160,7 @@ func main() {
 	e.Logger.Fatal(e.Start(":1323"))
 }
 
-func writeToPostgresWithJet(m *MeasurementJson) error {
+func storeMeasurement(m *MeasurementJson) error {
 	var err error
 
 	if len(devices) == 0 {
@@ -197,17 +213,42 @@ func writeToPostgresWithJet(m *MeasurementJson) error {
 			MODEL(measurement)
 
 		_, err = insertStmt.Exec(db)
-	} else {
-		updateStmt := Measurement.
-			UPDATE(Measurement.MutableColumns).
-			MODEL(measurement).
-			WHERE(Measurement.ID.EQ(Int32(measurement.ID)))
 
-		_, err = updateStmt.Exec(db)
+		sensorID := fmt.Sprintf("%s_temperature", m.MAC)
+		discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/config", sensorID)
+		stateTopic := fmt.Sprintf("sensors/%s/temperature", m.MAC)
+
+		selectRoomStmt := SELECT(Device.Label).FROM(Device).WHERE(Device.ID.EQ(Int32(deviceId)))
+		var room string
+		err := selectRoomStmt.Query(db, &room)
+		if err != nil {
+			log.Error().Err(err).Msgf("Failed to get device label for id %d", deviceId)
+			return err
+		}
+
+		// Publish discovery config
+		configPayload := fmt.Sprintf(`{
+			"name": "%s Temperature",
+			"state_topic": "%s",
+			"unit_of_measurement": "°C",
+			"device_class": "temperature",
+			"unique_id": "%s",
+			"value_template": "{{ value }}"
+		}`, room, stateTopic, sensorID)
+
+		mqttClient.Publish(discoveryTopic, 0, true, configPayload)
+
+		token := mqttClient.Publish(stateTopic, 0, false, fmt.Sprintf("%.2f", *measurement.Temperature))
+		published := token.WaitTimeout(500 * time.Millisecond)
+		if published {
+			log.Info().Msgf("Published state %.2f°C for %s", *measurement.Temperature, room)
+		} else {
+			log.Error().Msgf("Failed to publish state for %s", m.MAC)
+		}
 	}
 
 	if err != nil {
-		log.Error().Err(err).Msgf("Failed to insert or update data for device %d", deviceId)
+		log.Error().Err(err).Msgf("Failed to write data for device %d", deviceId)
 		return err
 	}
 	return nil
