@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -174,6 +175,25 @@ func storeMeasurement(m *MeasurementJson) error {
 		}
 		for _, device := range allDevices {
 			devices[strings.ToLower(device.Mac)] = int32(device.ID)
+
+			mqttSensorMac := strings.ReplaceAll(strings.ToLower(device.Mac), ":", "_")
+			discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s_temperature/config", mqttSensorMac)
+			stateTopic := fmt.Sprintf("home/temperature/%s", mqttSensorMac)
+
+			payload := map[string]any{
+				"name":                fmt.Sprintf("%s Temperature", device.Label),
+				"unique_id":           fmt.Sprintf("%s_temperature", mqttSensorMac),
+				"state_topic":         stateTopic,
+				"unit_of_measurement": "°C",
+				"device_class":        "temperature",
+				"value_template":      "{{ value_json.temp }}",
+			}
+
+			data, _ := json.Marshal(payload)
+			token := mqttClient.Publish(discoveryTopic, 0, true, data)
+			token.WaitTimeout(500 * time.Millisecond)
+			log.Printf("Published discovery for %s", mqttSensorMac)
+
 		}
 	}
 
@@ -213,10 +233,6 @@ func storeMeasurement(m *MeasurementJson) error {
 
 		_, err = insertStmt.Exec(db)
 
-		sensorID := fmt.Sprintf("%s_temperature", m.MAC)
-		discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/config", sensorID)
-		stateTopic := fmt.Sprintf("sensors/%s/temperature", m.MAC)
-
 		selectRoomStmt := SELECT(Device.AllColumns).FROM(Device).WHERE(Device.ID.EQ(Int32(deviceId)))
 		var device model.Device
 		err := selectRoomStmt.Query(db, &device)
@@ -226,19 +242,15 @@ func storeMeasurement(m *MeasurementJson) error {
 		}
 		room := device.Label
 
-		// Publish discovery config
-		configPayload := fmt.Sprintf(`{
-			"name": "%s Temperature",
-			"state_topic": "%s",
-			"unit_of_measurement": "°C",
-			"device_class": "temperature",
-			"unique_id": "%s",
-			"value_template": "{{ value }}"
-		}`, room, stateTopic, sensorID)
+		mqttSensorMac := strings.ReplaceAll(strings.ToLower(device.Mac), ":", "_")
+		stateTopic := fmt.Sprintf("home/temperature/%s", mqttSensorMac)
+		payload := map[string]any{
+			"room": room,
+			"temp": measurement.Temperature,
+		}
+		data, _ := json.Marshal(payload)
 
-		mqttClient.Publish(discoveryTopic, 0, true, configPayload)
-
-		token := mqttClient.Publish(stateTopic, 0, false, fmt.Sprintf("%.2f", *measurement.Temperature))
+		token := mqttClient.Publish(stateTopic, 0, false, data)
 		published := token.WaitTimeout(500 * time.Millisecond)
 		if published {
 			log.Info().Msgf("Published state %.2f°C for %s", *measurement.Temperature, room)
