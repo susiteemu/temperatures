@@ -46,7 +46,8 @@ var (
 )
 
 func loadConfiguration() {
-	envFile, err := godotenv.Read(".env")
+	var err error
+	envFile, err = godotenv.Read(".env")
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to read from env file")
 		panic(err)
@@ -67,9 +68,6 @@ func main() {
 	db.SetConnMaxLifetime(30 * time.Minute)
 	defer db.Close()
 
-	for key, val := range envFile {
-		log.Debug().Msgf("Env: %s=%s", key, val)
-	}
 	opts := mqtt.NewClientOptions().
 		AddBroker(envFile["MQTT_BROKER"]).
 		SetClientID("ruuvitag-httpserver").
