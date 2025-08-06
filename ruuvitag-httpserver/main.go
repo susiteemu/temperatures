@@ -181,7 +181,7 @@ func storeMeasurement(m *MeasurementJson) error {
 			stateTopic := fmt.Sprintf("home/temperature/%s", mqttSensorMac)
 
 			payload := map[string]any{
-				"name":                fmt.Sprintf("%s Temperature", device.Label),
+				"name":                device.Label,
 				"unique_id":           fmt.Sprintf("%s_temperature", mqttSensorMac),
 				"state_topic":         stateTopic,
 				"unit_of_measurement": "°C",
