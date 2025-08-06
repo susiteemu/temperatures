@@ -164,7 +164,7 @@ func storeMeasurement(m *MeasurementJson) error {
 	var err error
 
 	if len(devices) == 0 {
-		stmt := SELECT(Device.ID, Device.Mac).FROM(Device)
+		stmt := SELECT(Device.ID, Device.Label, Device.Mac).FROM(Device)
 		var allDevices []struct {
 			model.Device
 		}
