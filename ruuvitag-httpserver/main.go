@@ -53,6 +53,10 @@ func loadConfiguration() {
 	}
 
 	log.Debug().Msgf("Read environment %v", envFile)
+
+	for key, val := range envFile {
+		log.Debug().Msgf("Env: %s=%s", key, val)
+	}
 }
 
 func main() {
@@ -68,8 +72,6 @@ func main() {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(30 * time.Minute)
 	defer db.Close()
-
-	log.Info().Msgf("Connecting to MQTT (url=%s)", envFile["MQTT_BROKER"])
 
 	opts := mqtt.NewClientOptions().
 		AddBroker(envFile["MQTT_BROKER"]).
