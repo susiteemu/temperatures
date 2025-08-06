@@ -69,6 +69,8 @@ func main() {
 	db.SetConnMaxLifetime(30 * time.Minute)
 	defer db.Close()
 
+	log.Info().Msgf("Connecting to MQTT (url=%s)", envFile["MQTT_BROKER"])
+
 	opts := mqtt.NewClientOptions().
 		AddBroker(envFile["MQTT_BROKER"]).
 		SetClientID("ruuvitag-httpserver").
