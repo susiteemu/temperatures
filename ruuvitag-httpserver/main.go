@@ -217,13 +217,14 @@ func storeMeasurement(m *MeasurementJson) error {
 		discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/config", sensorID)
 		stateTopic := fmt.Sprintf("sensors/%s/temperature", m.MAC)
 
-		selectRoomStmt := SELECT(Device.Label).FROM(Device).WHERE(Device.ID.EQ(Int32(deviceId)))
-		var room string
-		err := selectRoomStmt.Query(db, &room)
+		selectRoomStmt := SELECT(Device.AllColumns).FROM(Device).WHERE(Device.ID.EQ(Int32(deviceId)))
+		var device model.Device
+		err := selectRoomStmt.Query(db, &device)
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to get device label for id %d", deviceId)
 			return err
 		}
+		room := device.Label
 
 		// Publish discovery config
 		configPayload := fmt.Sprintf(`{
