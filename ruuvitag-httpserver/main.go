@@ -51,12 +51,6 @@ func loadConfiguration() {
 		log.Error().Err(err).Msg("Failed to read from env file")
 		panic(err)
 	}
-
-	log.Debug().Msgf("Read environment %v", envFile)
-
-	for key, val := range envFile {
-		log.Debug().Msgf("Env: %s=%s", key, val)
-	}
 }
 
 func main() {
@@ -73,6 +67,9 @@ func main() {
 	db.SetConnMaxLifetime(30 * time.Minute)
 	defer db.Close()
 
+	for key, val := range envFile {
+		log.Debug().Msgf("Env: %s=%s", key, val)
+	}
 	opts := mqtt.NewClientOptions().
 		AddBroker(envFile["MQTT_BROKER"]).
 		SetClientID("ruuvitag-httpserver").
