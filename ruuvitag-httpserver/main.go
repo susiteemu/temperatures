@@ -101,6 +101,7 @@ func main() {
 
 	postBinaryMeasurement := func(c echo.Context) error {
 		binaryData, err := io.ReadAll(c.Request().Body)
+		log.Info().Msgf("Binary data: %v", binaryData)
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to read binary body")
 			return echo.NewHTTPError(400, "Invalid data")
