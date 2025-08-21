@@ -101,7 +101,6 @@ func main() {
 
 	postBinaryMeasurement := func(c echo.Context) error {
 		binaryData, err := io.ReadAll(c.Request().Body)
-		log.Info().Msgf("Binary data: %v", binaryData)
 		if err != nil {
 			log.Error().Err(err).Msgf("Failed to read binary body")
 			return echo.NewHTTPError(400, "Invalid data")
@@ -122,7 +121,7 @@ func main() {
 		rawTemperature := int16(binaryData[3])<<8 | int16(binaryData[4])
 		temperature := 0.005 * float64(rawTemperature)
 
-		rawHumidity := int16(binaryData[5])<<8 | int16(binaryData[6])
+		rawHumidity := uint16(binaryData[5])<<8 | uint16(binaryData[6])
 		humidity := 0.0025 * float64(rawHumidity)
 
 		rawBattery := uint16(binaryData[7])<<3 | uint16(binaryData[8])>>5
